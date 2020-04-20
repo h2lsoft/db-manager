@@ -1,2 +1,2 @@
-# db-manager
+# DB Manager
 PDO wrapper to simplify db queries
