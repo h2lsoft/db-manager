@@ -33,10 +33,10 @@ $results = $DBM->query($sql, [':Continent' =>  'Asia'])->fetchAll();
 // or use short version
 $sql = $DBM->select("Name, SurfaceArea")
             ->from('Country')
-		   ->where("Continent = :Continent")
-		   ->orderBy('SurfaceArea DESC')
-		   ->limit(3)
-		   ->getSQL();
+            ->where("Continent = :Continent")
+            ->orderBy('SurfaceArea DESC')
+            ->limit(3)
+            ->getSQL();
 
 $DBM->close();
 ```
