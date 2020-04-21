@@ -3,7 +3,7 @@
  * Simple example to fetch data to server
  */
 
-include "../src/DBManager/DBManager.php";
+include "../src/DBManager.php";
 include "include/connection_init.php";
 
 // normal query => top 3 countries in ASIA by surface area

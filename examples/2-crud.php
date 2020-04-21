@@ -3,7 +3,7 @@
  * Simple CRUD example
  */
 
-include "../src/DBManager/DBManager.php";
+include "../src/DBManager.php";
 include "include/connection_init.php";
 
 // insert record soft mode (with stamp)

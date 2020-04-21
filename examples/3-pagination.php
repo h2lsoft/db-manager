@@ -3,7 +3,7 @@
  * Pagination example
  */
 
-include "../src/DBManager/DBManager.php";
+include "../src/DBManager.php";
 include "include/connection_init.php";
 
 $current_page = (!isset($_GET['page'])) ? 1 : $_GET['page'];
@@ -18,8 +18,7 @@ $sql = $DBM->select("*")
 		   ->where("Continent = :Continent")
 		   ->getSQL();
 
-$params = [];
-$params[':Continent'] = "Asia";
+$params = [':Continent' => 'Asia'];
 
 $pager = $DBM->paginate($sql, $params, $current_page, 20);
 

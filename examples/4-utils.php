@@ -3,7 +3,7 @@
  * Utils example
  */
 
-include "../src/DBManager/DBManager.php";
+include "../src/DBManager.php";
 include "include/connection_init.php";
 
 // alias
