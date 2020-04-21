@@ -3,7 +3,6 @@
 namespace h2lsoft\DBManager;
 use PDO;
 
-
 class DBManager
 {
 	public $connection;
@@ -911,7 +910,6 @@ class DBManager
 		}
 		
 		return $_response;
-		
 	}
 	
 	
