@@ -1,7 +1,7 @@
 {
   "name": "h2lsoft/db-manager",
   "description": "PDO wrapper to manage query",
-  "keywords":     ["php", "database", "pdo", "orm"],
+  "keywords":     ["php", "database", "pdo"],
   "type": "library",
   "license": "MIT",
 
