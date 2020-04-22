@@ -39,15 +39,15 @@ $sql = $DBM->select("Name, SurfaceArea")
            ->getSQL();
 ```
 
-## Softmode
+## Soft Mode
 
-Softmode is activated by default, it allow to automatic timestamp on each record for operation like : `Insert`, `Update`, `Delete`.
-You can disable it in constructor or you can use $DBM->SoftMode(0);
+Soft mode is activated by default, it allow to automatic timestamp and author on each record for operation like : `Insert`, `Update`, `Delete`.
+Soft mode is optional but recommended, you can disable it in constructor or you can use $DBM->SoftMode(0);
 
-Softmode allows you to keep data safe by turn flag field `deleted` to `yes` and no trash your record physically.
+Soft mode allows you to keep data safe by turn flag field `deleted` to `yes` and no trash your record physically.
 It is useful to retrieve your data in case of accidentally delete rows.
 
-You can use magic method `$DBM->table('my_table')->addSoftModeColumns()` this will add automatically softmode columns :
+You can use magic method `$DBM->table('my_table')->addSoftModeColumns()` this will add automatically soft mode columns :
 
 - `deleted` (enum => yes, no)
 - `created_at` (datetime)
