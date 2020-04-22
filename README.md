@@ -92,21 +92,32 @@ $current_page = 1;
 $pager = $DBM->paginate($sql, $params, $current_page, 20);
 ```
 
-```json
-Array
-(
-    [total] => 51
-    [per_page] => 20
-    [last_page] => 3
-    [current_page] => 1
-    [from] => 1
-    [to] => 20
-    [page_start] => 1
-    [page_end] => 3
-    [data] => Array(
+```
+[
+    [total] => 51,
+    [per_page] => 20,
+    [last_page] => 3,
+    [current_page] => 1,
+    [from] => 1,
+    [to] => 20,
+    [page_start] => 1,
+    [page_end] => 3,
+    [data] => [
                         ....
-                    )         
-)
+              ]         
+]
+```
+
+## Useful methods
+
+```php
+
+// get a record by ID, you can use multiple ID by array
+$record = $DBM->table('Country')->get(10);
+
+//  multiple ID
+$records = $DBM->table('Country')->get([12, 10, 55]);
+
 ```
 
 
