@@ -2,7 +2,9 @@
 PDO wrapper to simplify db queries.
 It provides a simple way to create, retrieve, update & delete records.
 
-[![Latest Stable Version](https://poser.pugx.org/h2lsoft/db-manager/v/stable)](https://packagist.org/packages/h2lsoft/db-manager)
+
+[![Version](https://badge.fury.io/gh/h2lsoft%2Fdb-manager.svg)](https://badge.fury.io/gh/h2lsoft%2Fdb-manager)
+
 
 
 ## Requirements
