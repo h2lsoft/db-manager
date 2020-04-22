@@ -14,6 +14,8 @@ class DBManager
 	
 	private $soft_mode;
 	
+	private $default_user_UID;
+	
 	
 	private $_columns_forbidden = ['deleted', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by'];
 	private $_sql_functions = ['NOW()', 'CURRENT_DATE()'];
@@ -28,10 +30,12 @@ class DBManager
 	 * DBManager constructor.
 	 *
 	 * @param bool $soft_mode (auto turn soft mode)
+	 * @param int|string $default_user_UID (default UID if soft mode is activated)
 	 */
-	public function __construct($soft_mode=true)
+	public function __construct($soft_mode=true, $default_user_UID='')
 	{
 		$this->soft_mode = $soft_mode;
+		$this->default_user_UID = $default_user_UID;
 	}
 	
 	private function error_interceptor($bool)
@@ -88,6 +92,23 @@ class DBManager
 	public function getSoftMode()
 	{
 		return $this->soft_mode;
+	}
+	
+	/**
+	 * Assign a default UID for soft mode
+	 * @param int|string $UID
+	 */
+	public function setSoftModeDefaultUID($UID)
+	{
+		$this->default_user_UID = $UID;
+	}
+	
+	/**
+	 * Get default UID for soft mode
+	 */
+	public function getSoftModeDefaultUID()
+	{
+		return $this->default_user_UID;
 	}
 	
 	/**
@@ -359,7 +380,7 @@ class DBManager
 			}
 			
 			$row['created_at'] = date('Y-m-d H:i:s');
-			$row['created_by'] = $created_by;
+			$row['created_by'] = (empty($created_by)) ? $this->default_user_UID : $created_by;
 		}
 		
 		if(empty($table))$table = $this->table;
@@ -433,7 +454,7 @@ class DBManager
 			if(!$this->_from_query_delete)
 			{
 				$row['updated_at'] = date('Y-m-d H:i:s');
-				$row['updated_by'] = $updated_by;
+				$row['updated_by'] = (empty($updated_by)) ? $this->default_user_UID : $updated_by;
 			}
 		}
 		
@@ -559,7 +580,7 @@ class DBManager
 			$row = [];
 			$row['deleted'] = 'YES';
 			$row['deleted_at'] = date('Y-m-d H:i:s');
-			$row['deleted_by'] = $deleted_by;
+			$row['deleted_by'] = (empty($deleted_by)) ? $this->default_user_UID : $deleted_by;
 			$this->_from_query_delete = true;
 			
 			return $this->update($row, $where, $limit, '', $table);
@@ -796,7 +817,6 @@ class DBManager
 		
 		if(!isset($this->dbQL['FROM']))
 			trigger_error("DBM Error : FROM not initialized", E_USER_ERROR);
-		
 		
 		
 		if($this->soft_mode)

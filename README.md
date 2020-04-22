@@ -3,7 +3,7 @@ PDO wrapper to simplify db queries.
 It provides a simple way to create, retrieve, update & delete records.
 
 [![Latest Stable Version](https://poser.pugx.org/h2lsoft/db-manager/v/stable)](https://packagist.org/packages/h2lsoft/db-manager)
-[![License](https://poser.pugx.org/db-manager/db-manager/license)](https://packagist.org/packages/h2lsoft/db-manager)
+
 
 ## Requirements
 
@@ -37,6 +37,24 @@ $sql = $DBM->select("Name, SurfaceArea")
            ->orderBy('SurfaceArea DESC')
            ->limit(3)
            ->getSQL();
+
+// insert
+$values = [];
+$values['Name'] = "Agatha Christies";
+$values['Birthdate'] = "1890-10-15";
+
+$ID = $DBM->table('Author')->insert($values);
+
+
+// update
+$values = [];
+$values['Name'] = "Agatha Christies";
+$affected_rows = $DBM->table('Author')->update($values, $ID); # you can put direct ID or you can use where clause
+
+// delete
+$affected_rows = $DBM->table('Author')->delete(["ID = ?", $ID]);
+
+
 ```
 
 ## Soft Mode
@@ -58,52 +76,23 @@ You can use magic method `$DBM->table('my_table')->addSoftModeColumns()` this wi
 - `deleted_by` (varchar)
 
 
-
-## CRUD operations
-
-### INSERT
-
-```php
-$values = [];
-$values['Name'] = "Agatha Christies";
-$values['Birthdate'] = "1890-10-15";
-
-$ID = $DBM->table('Author')->insert($values);
-```
-
-
-### UPDATE
-
-```php
-$values = [];
-$values['Name'] = "Agatha Christies";
-$affected_rows = $DBM->table('Author')->update($values, $ID);
-```
-
-### DELETE
-
-```php
-$affected_rows = $DBM->table('Author')->delete(["ID = ?", $ID]);
-```
-
-
 ## Pagination component
 
 ```php
 $sql = $DBM->select("*")
-		   ->from('Country')
-		   ->where("Continent = :Continent")
-		   ->getSQL();
+           ->from('Country')
+           ->where("Continent = :Continent")
+           ->getSQL();
 
 $params = [':Continent' => 'Asia'];
 
 $current_page = 1;
 
-// return a complete array
+// return a complete array paginate
 $pager = $DBM->paginate($sql, $params, $current_page, 20);
 ```
 
-```
+```json
 Array
 (
     [total] => 51
