@@ -23,7 +23,7 @@ $ composer require h2lsoft/db-manager
 ```php
 use \h2lsoft\DBManager;
 
-$DBM = new DBManager\DBManager();
+$DBM = new DBManager\DBManager(); // soft mode is activated by default
 $DBM->connect('mysql', 'localhost', 'root', '', 'mydatabase');
 
 // execute simple query with binding
@@ -38,6 +38,26 @@ $sql = $DBM->select("Name, SurfaceArea")
            ->limit(3)
            ->getSQL();
 ```
+
+## Softmode
+
+Softmode is activated by default, it allow to automatic timestamp on each record for operation like : `Insert`, `Update`, `Delete`.
+You can disable it in constructor or you can use $DBM->SoftMode(0);
+
+Softmode allows you to keep data safe by turn flag field `deleted` to `yes` and no trash your record physically.
+It is useful to retrieve your data in case of accidentally delete rows.
+
+You can use magic method `$DBM->table('my_table')->addSoftModeColumns()` this will add automatically softmode columns :
+
+- `deleted` (enum => yes, no)
+- `created_at` (datetime)
+- `created_by` (varchar)
+- `updated_at` (datetime)
+- `updated_by` (varchar)
+- `deleted_at` (datetime)
+- `deleted_by` (varchar)
+
+
 
 ## CRUD operations
 
