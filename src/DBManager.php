@@ -64,7 +64,9 @@ class DBManager
 	 * @param string $password
 	 * @param string $database
 	 * @param string $port
-	 * @param array  $pdo_options (see official documentation)
+	 * @param array  $pdo_options (see official documentation => example: [PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"] )
+	 *
+	 * @return pdo link
 	 */
 	public function connect($driver='mysql', $host='localhost', $username='root', $password='', $database='', $port='',  $pdo_options=[])
 	{
@@ -75,6 +77,8 @@ class DBManager
 		$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 		
 		restore_exception_handler();
+		
+		return $this->connection;
 	}
 	
 	/**
@@ -804,8 +808,16 @@ class DBManager
 		return $this;
 	}
 	
-	
 	/**
+	 * Execute constructed sql
+	 */
+	public function executeSQL($params=[])
+	{
+		$sql = $this->getSQL();
+		return $this->query($sql, $params);
+	}
+		
+		/**
 	 * Construct query
 	 *
 	 * @return string
@@ -813,16 +825,18 @@ class DBManager
 	public function getSQL()
 	{
 		if(!isset($this->dbQL['SELECT']))
-			trigger_error("DBM Error : SELECT not initialized", E_USER_ERROR);
+			$this->dbQL['SELECT'] = '*';
 		
 		if(!isset($this->dbQL['FROM']))
-			trigger_error("DBM Error : FROM not initialized", E_USER_ERROR);
-		
+		{
+			if(empty($this->table))
+				trigger_error("DBM Error : FROM not initialized", E_USER_ERROR);
+			else
+				$this->dbQL['FROM'] = $this->table;
+		}
 		
 		if($this->soft_mode)
-		{
 			$this->where("deleted = 'no'");
-		}
 		
 		$sql = "SELECT\n";
 		$sql .= "\t\t{$this->dbQL['SELECT']}\n";
