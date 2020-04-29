@@ -39,6 +39,17 @@ $sql = $DBM->select("Name, SurfaceArea")
            ->orderBy('SurfaceArea DESC')
            ->limit(3)
            ->getSQL();
+$results = $DBM->query($sql, [':Continent' =>  'Asia'])->fetchAll();
+
+// or imbricated version
+$results = $DBM->select("Name, SurfaceArea")
+                      ->from('Country')
+                      ->where("Continent = :Continent")
+                      ->orderBy('SurfaceArea DESC')
+                      ->limit(3)
+                      ->executeSql([':Continent' =>  'Asia'])
+                            ->fetchAll();
+
 
 // insert
 $values = [];
