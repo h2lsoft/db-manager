@@ -437,7 +437,7 @@ class DBManager
 	 * Update a record
 	 *
 	 * @param array     	$row
-	 * @param string|array  $where if is numeric ID or array bind parameters are generated [sql_where, [params => value]]
+	 * @param string|array  $where if is numeric ID or array bind parameters are generated ['Column = :param_name', [':params_name' => 'value', ...]]
 	 * @param int    		$limit (default -1 no limit)
 	 * @param        		$table
 	 */
@@ -564,7 +564,7 @@ class DBManager
 	/**
 	 * Delete query
 	 *
-	 * @param  int|string|array      $where
+	 * @param  int|string|array      $where (if array example: ['ID = ? AND Name = ?', $ID, $Name])
 	 * @param string $limit
 	 * @param string $deleted_by
 	 * @param string $table
