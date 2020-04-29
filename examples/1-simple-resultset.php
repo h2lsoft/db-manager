@@ -16,15 +16,26 @@ echo "</pre>";
 
 
 
-// simple query rewrinting
+// simple query rewriting
 $sql = $DBM->select("Name, SurfaceArea")
 		   ->from('Country')
 		   ->where("Continent = :Continent")
 		   ->orderBy('SurfaceArea DESC')
 		   ->limit(3)
 		   ->getSQL();
+$results = $DBM->query($sql, [':Continent' =>  'Asia'])->fetchAll();
 
-$results = $DBM->query($sql, [':Continent' => "Asia"])->fetchAll();
+
+
+// imbricated version
+$results = $DBM->select("Name, SurfaceArea")
+				->from('Country')
+				->where("Continent = :Continent")
+				->orderBy('SurfaceArea DESC')
+				->limit(3)
+				->executeSQL([':Continent' => "Asia"])
+					->fetchAll();
+
 
 echo "<pre>";
 print_r($results);
