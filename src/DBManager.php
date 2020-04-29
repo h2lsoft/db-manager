@@ -437,7 +437,7 @@ class DBManager
 	 * Update a record
 	 *
 	 * @param array     	$row
-	 * @param string|array  $where if is numeric ID or array bind parameters are generated
+	 * @param string|array  $where if is numeric ID or array bind parameters are generated [sql_where, [params => value]]
 	 * @param int    		$limit (default -1 no limit)
 	 * @param        		$table
 	 */
@@ -465,18 +465,17 @@ class DBManager
 		
 		if(empty($table))$table = $this->table;
 		
-		$stmt = "UPDATE\n";
-		$stmt .= "	`{$table}`\n";
-		$stmt .= "SET\n";
+		$sql = "UPDATE\n";
+		$sql .= "	`{$table}`\n";
+		$sql .= "SET\n";
 		
 		$_params = [];
 		
 		$init = false;
 		foreach($row as $key => $value)
 		{
-			if($init)$stmt .= ",\n";
-			// $stmt .= "\t`{$key}` = ?";
-			$stmt .= "\t`{$key}` = :{$key}";
+			if($init)$sql .= ",\n";
+			$sql .= "\t`{$key}` = :{$key}";
 			$init = true;
 			
 			$_params[$key] = $value;
@@ -505,54 +504,51 @@ class DBManager
 		}
 		else
 		{
-			$where_dyn[] = $where[0];
-			$_ps = array_slice($where, 1, count($where));
+			$where_dyn[] = $where[0]; # raw
 			
-			/*
-			foreach($_ps as $_p)
+			// $_ps = array_slice($where, 1, count($where));
+			$_ps = $where[1];
+			foreach($_ps as $p_name => $p_val)
 			{
-				$_params[] = $_p;
+				$_params[$p_name] = $p_val;
 			}
-			*/
-			
 		}
-		
 		
 		// where dynamic
 		if(count($where_dyn))
 		{
-			$stmt .= "\nWHERE ";
+			$sql .= "\nWHERE ";
 			
 			$init = false;
 			foreach($where_dyn as $wd => $val)
 			{
-				if($init) $stmt .= " AND\n";
-				$stmt .= "\n\t\t{$val}";
+				if($init) $sql .= " AND\n";
+				$sql .= "\n\t\t{$val}";
 				
 				$init = true;
 			}
 		}
 		
-		
 		// add limit
 		if($limit != -1 && is_numeric($limit))
 		{
-			$stmt .= "\nLIMIT {$limit}";
+			$sql .= "\nLIMIT {$limit}";
 		}
 		
+		
 		$this->purgeQueryStack();
-		$this->query_stack[++$this->query_id] = $stmt;
-		$this->last_query = $stmt;
+		$this->query_stack[++$this->query_id] = $sql;
+		$this->last_query = $sql;
 		$this->last_query_params = $_params;
 		
 		$this->error_interceptor(1);
-		$prepared = $this->connection->prepare($stmt);
+		$prepared = $this->connection->prepare($sql);
 		
 		if(count($_params))
 		{
 			foreach($_params as $p => $v)
 			{
-				$prepared->bindValue(":{$p}", $v);
+				$prepared->bindValue($p, $v);
 			}
 		}
 		
