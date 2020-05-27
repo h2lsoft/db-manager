@@ -167,10 +167,13 @@ class DBManager
 	public function query($sql, $binds=[])
 	{
 		$this->purgeQueryStack();
-		if($sql != "SELECT FOUND_ROWS()")$this->last_query = $sql;
+		if($sql != "SELECT FOUND_ROWS()")
+		{
+			$this->last_query = $sql;
+			$this->last_query_params = $binds;
+		}
 		
 		$this->error_interceptor(1);
-		
 		if(!count($binds))
 		{
 			$this->query_stack[++$this->query_id] = $this->connection->query($sql);
@@ -180,7 +183,14 @@ class DBManager
 			$stmt = $this->prepare($sql);
 			foreach($binds as $bind => $value)
 			{
-				$stmt->bindParam($bind, $value);
+				if(preg_match("/ID$/", $bind))
+				{
+					$stmt->bindParam($bind, $value, PDO::PARAM_INT);
+				}
+				else
+				{
+					$stmt->bindParam($bind, $value);
+				}
 			}
 			$stmt->execute();
 			$this->query_stack[++$this->query_id] = $stmt;
