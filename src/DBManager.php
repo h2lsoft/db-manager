@@ -185,11 +185,11 @@ class DBManager
 			{
 				if(preg_match("/ID$/", $bind))
 				{
-					$stmt->bindParam($bind, $value, PDO::PARAM_INT);
+					$stmt->bindValue($bind, $value, PDO::PARAM_INT);
 				}
 				else
 				{
-					$stmt->bindParam($bind, $value);
+					$stmt->bindValue($bind, $value);
 				}
 			}
 			$stmt->execute();
