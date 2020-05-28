@@ -429,7 +429,7 @@ class DBManager
 		// bind parameters
 		foreach($columns as $column)
 		{
-			$prepared->bindParam(":{$column}", $row[$column]);
+			$prepared->bindValue(":{$column}", $row[$column]);
 		}
 		
 		$prepared->execute();
