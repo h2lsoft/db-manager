@@ -19,7 +19,7 @@ echo "</pre>";
 
 
 //  multiple ID
-$records = $DBM->table('Country')->get([12, 10, 55]);
+$records = $DBM->table('Country')->getByID([12, 10, 55]);
 
 echo "<pre>";
 print_r($records);

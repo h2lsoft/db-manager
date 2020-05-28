@@ -643,7 +643,7 @@ class DBManager
 	 *
 	 * @return array|bool
 	 */
-	public function get($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	public function getByID($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
 	{
 		if(empty($table))$table = $this->table;
 		
@@ -670,8 +670,23 @@ class DBManager
 		}
 		
 		return $records;
-		
 	}
+	
+	/**
+	 * Get a record by ID (if array multiple is returned)
+	 *
+	 * @param int|array $ID
+	 * @param string $fields
+	 * @param string $table
+	 *
+	 * @return array|bool
+	 * @deprecated use getByID
+	 */
+	public function get($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	{
+		return $this->getByID($ID, $fields, $fetch_mode);
+	}
+	
 	
 	
 	/**

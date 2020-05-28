@@ -126,10 +126,10 @@ $pager = $DBM->paginate($sql, $params, $current_page, 20);
 ```php
 
 // get a record by ID, you can use multiple ID by array
-$record = $DBM->table('Country')->get(10);
+$record = $DBM->table('Country')->getByID(10);
 
 //  multiple ID
-$records = $DBM->table('Country')->get([12, 10, 55]);
+$records = $DBM->table('Country')->getByID([12, 10, 55]);
 
 ```
 
