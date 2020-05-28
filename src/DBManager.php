@@ -184,13 +184,9 @@ class DBManager
 			foreach($binds as $bind => $value)
 			{
 				if(preg_match("/ID$/", $bind))
-				{
 					$stmt->bindValue($bind, $value, PDO::PARAM_INT);
-				}
 				else
-				{
 					$stmt->bindValue($bind, $value);
-				}
 			}
 			$stmt->execute();
 			$this->query_stack[++$this->query_id] = $stmt;
