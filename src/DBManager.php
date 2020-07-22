@@ -498,7 +498,7 @@ class DBManager
 			if(!empty($where))
 			{
 				// ID found
-				if(ctype_digit($where))
+				if(is_numeric($where))
 				{
 					$where_dyn[] = "`ID` = {$where}";
 				}
@@ -604,7 +604,7 @@ class DBManager
 			{
 				$sql .= " WHERE ";
 				
-				if(ctype_digit($where))
+				if(is_numeric($where))
 				{
 					$sql .= " ID = {$where} ";
 				}
