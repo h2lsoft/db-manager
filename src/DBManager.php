@@ -868,7 +868,18 @@ class DBManager
 			foreach($this->dbQL['WHERE'] as $where)
 			{
 				if($init)$sql .= " AND\n";
-				$sql .= "\t\t{$where[0]}";
+				
+				if(is_array($where))
+				{
+					if(is_numeric($where[0])) $where[0] = "ID = {$where[0]}";
+					$sql .= "\t\t{$where[0]}";
+				}
+				else
+				{
+					if(is_numeric($where)) $where = "ID = {$where}";
+					$sql .= "\t\t{$where}";
+				}
+				
 				$init = true;
 			}
 		}
