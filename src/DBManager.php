@@ -926,7 +926,7 @@ class DBManager
 		if($current_page <= 0)$current_page = 1;
 		$offset = ($current_page-1) * $limit;
 		
-		$sql = str_replace("SELECT\n", "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
+		$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
 		$sql .= "\nLIMIT {$offset}, {$limit}";
 		
 		$result = $this->query($sql, $params)->fetchAll();
