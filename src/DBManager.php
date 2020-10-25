@@ -563,7 +563,7 @@ class DBManager
 		
 		$this->_from_query_delete = false;
 		
-		return $affected_rows;
+		return $prepared->rowCount();
 	}
 	
 	
