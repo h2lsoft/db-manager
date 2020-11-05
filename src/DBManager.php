@@ -920,20 +920,49 @@ class DBManager
 	 *
 	 *
 	 */
-	public function paginate($sql, $params=[], $current_page=1, $limit=20)
+	public function paginate($sql, $params=[], $current_page=1, $limit=20, $sql_cal_found_mode=false)
 	{
 		$current_page = (int)$current_page;
 		if($current_page <= 0)$current_page = 1;
 		$offset = ($current_page-1) * $limit;
 		
-		$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
-		$sql .= "\nLIMIT {$offset}, {$limit}";
+		$sql = trim($sql);
 		
-		$result = $this->query($sql, $params)->fetchAll();
+		if(!$sql_cal_found_mode)
+		{
+			$sql_tmp = $sql;
+			$sql .= "\nLIMIT {$offset}, {$limit}";			
+			$result = $this->query($sql, $params)->fetchAll();
+			
+			$sql_tmp = str_replace(["SELECT\r\n", "SELECT\n"], "SELECT\n\n", $sql_tmp);
+			$sql_tmp = str_replace(["\tFROM", " FROM"], "\nFROM", $sql_tmp);
+			$sql_tmp = str_replace(["FROM\r\n", "FROM\n"], "FROM\n\n", $sql_tmp);
+		
+			$sql_count_part = str_extract("SELECT\n\n", "\nFROM\n\n", $sql_tmp);
+			$sql_tmp = str_replace($sql_count_part, " COUNT(*) ", $sql_tmp);
+		
+			$last_order_by = explode("ORDER BY ", $sql_tmp);
+			if(count($last_order_by) > 1)
+			{
+				$sql_tmp = str_replace("ORDER BY ".end($last_order_by), "", $sql_tmp);
+			}
+		
+			$sql_tmp = trim($sql_tmp);
+			$total_found = $this->query($sql_tmp, $params)->fetchOne();
+		}	
+		else	
+		{	
+			$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
+			$sql .= "\nLIMIT {$offset}, {$limit}";		
+			$result = $this->query($sql, $params)->fetchAll();				
+			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
+		}
 		
 		
-		$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
+		
 		$total_page = (int)ceil($total_found / $limit);
+		
+		
 		
 		$_response = [];
 		$_response['total'] = $total_found;
