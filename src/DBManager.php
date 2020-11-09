@@ -41,7 +41,7 @@ class DBManager
 	private function error_interceptor($bool)
 	{
 		if($bool)
-			set_exception_handler(array(__CLASS__, 'exception_handler'));
+			set_exception_handler([$this, 'exception_handler']);
 		else
 			restore_exception_handler();
 	}
@@ -49,7 +49,7 @@ class DBManager
 	/**
 	 * @param $exception
 	 */
-	public static function exception_handler($exception)
+	public function exception_handler($exception)
 	{
 		$message = $exception->getMessage();
 		trigger_error("DBM Error : ".$message, E_USER_ERROR);
