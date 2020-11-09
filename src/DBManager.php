@@ -72,11 +72,10 @@ class DBManager
 	{
 		$dsn = "{$driver}:host={$host};dbname={$database};port={$port}";
 		
-		set_exception_handler(array(__CLASS__, 'exception_handler'));
+		error_interceptor(1);
 		$this->connection = new PDO($dsn, $username, $password, $pdo_options);
 		$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-		
-		restore_exception_handler();
+		error_interceptor(0);
 		
 		return $this->connection;
 	}
