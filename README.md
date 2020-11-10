@@ -9,7 +9,7 @@ It provides a simple way to create, retrieve, update & delete records.
 
 ## Requirements
 
-- php >= 7.0
+- php >= 7.3
 - php PDO extension
 
 
