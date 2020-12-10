@@ -5,7 +5,7 @@ use PDO;
 
 class DBManager
 {
-	private $connection;
+	public $connection;
 	
 	private $query_stack = [];
 	private $query_id = -1;
