@@ -122,8 +122,8 @@ class DBManager
 	{
 		return $this->connection;
 	}
-		
-		/**
+	
+	/**
 	 * Close connection
 	 *
 	 * @param string $name
@@ -149,14 +149,14 @@ class DBManager
 	 */
 	protected function purgeQueryStack()
 	{
-		if(count($this->query_stack) >= 100)
+		if(count($this->query_stack) >= 20)
 		{
 			$this->query_stack = [];
 			$this->query_id = 0;
 		}
 	}
 	
-		
+	
 	/**
 	 * Execute query
 	 *
@@ -376,6 +376,8 @@ class DBManager
 	 */
 	public function insert($row, $created_by='', $table='')
 	{
+		if(empty($table))$table = $this->table;
+		
 		if($this->soft_mode)
 		{
 			$keys = array_keys($row);
@@ -391,9 +393,6 @@ class DBManager
 			$row['created_at'] = date('Y-m-d H:i:s');
 			$row['created_by'] = (empty($created_by)) ? $this->default_user_UID : $created_by;
 		}
-		
-		if(empty($table))$table = $this->table;
-		
 		
 		$columns = [];
 		$columns_str = "";
@@ -436,7 +435,6 @@ class DBManager
 		
 		return $this->lastInsertId();
 	}
-	
 	
 	/**
 	 * Update a record
@@ -567,6 +565,82 @@ class DBManager
 	
 	
 	/**
+	 * Insert row in bulk mode
+	 *
+	 * @param array  $rows (associated array)
+	 * @param int 	 array_chunk
+	 * @param string $created_by
+	 * @param string $table
+	 */
+	public function insertBulk($rows, $chunk_size, $created_by='', $table='')
+	{
+		if(empty($table))$table = $this->table;
+		if(!count($rows))return;
+		
+		$rows = array_chunk($rows, $chunk_size);
+		
+		// verify soft mode
+		$row = $rows[0][0];
+		$keys = array_keys($row);
+		
+		if($this->soft_mode)
+		{
+			foreach($this->_columns_forbidden as $key)
+			{
+				if(in_array($key, $keys))
+				{
+					$message = "`{$key}` is forbidden";
+					trigger_error("DBM Error : ".$message, E_USER_ERROR);
+				}
+			}
+			
+			$keys[] = 'created_by';
+			$keys[] = 'created_at';
+		}
+		
+		$this->error_interceptor(1);
+		
+		$columns = $keys;
+		$placeholders = array_fill(0, count($columns), '?');
+		$columns_joined = join(',', $columns);
+		
+		$this->connection->beginTransaction();
+		foreach($rows as $rows_splitted)
+		{
+			$sql = "INSERT INTO `{$table}` ";
+			$sql .= "	(".join(',', $columns).") ";
+			$sql .= " VALUES\n";
+			
+			$init = false;
+			$values = [];
+			foreach($rows_splitted as $row)
+			{
+				if($init)$sql .= ",\n";
+				$sql .= "(".join(',', $placeholders).")";
+				$init = true;
+				
+				if($this->soft_mode)
+				{
+					$row['create_at'] = now();
+					$row['create_by'] = $created_by;
+				}
+				
+				foreach($row as $key => $val)
+					$values[] = $val;
+			}
+			
+			$stmt = $this->prepare($sql);
+			$stmt->execute($values);
+		}
+		
+		$this->connection->commit();
+		
+		$this->error_interceptor(0);
+		
+	}
+	
+	
+	/**
 	 * Delete query
 	 *
 	 * @param  int|string|array      $where (if array example: ['ID = ? AND Name = ?', $ID, $Name])
@@ -632,7 +706,6 @@ class DBManager
 		
 	}
 	
-	
 	/**
 	 * Get a record by ID (if array multiple is returned)
 	 *
@@ -685,8 +758,6 @@ class DBManager
 	{
 		return $this->getByID($ID, $fields, $fetch_mode);
 	}
-	
-	
 	
 	/**
 	 * Add dynamically table soft mode columns (deleted, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
@@ -832,8 +903,8 @@ class DBManager
 		$sql = $this->getSQL();
 		return $this->query($sql, $params);
 	}
-		
-		/**
+	
+	/**
 	 * Construct query
 	 *
 	 * @return string
@@ -930,30 +1001,30 @@ class DBManager
 		if(!$sql_cal_found_mode)
 		{
 			$sql_tmp = $sql;
-			$sql .= "\nLIMIT {$offset}, {$limit}";			
+			$sql .= "\nLIMIT {$offset}, {$limit}";
 			$result = $this->query($sql, $params)->fetchAll();
 			
 			$sql_tmp = str_replace(["SELECT\r\n", "SELECT\n"], "SELECT\n\n", $sql_tmp);
 			$sql_tmp = str_replace(["\tFROM", " FROM"], "\nFROM", $sql_tmp);
 			$sql_tmp = str_replace(["FROM\r\n", "FROM\n"], "FROM\n\n", $sql_tmp);
-		
+			
 			$sql_count_part = str_extract("SELECT\n\n", "\nFROM\n\n", $sql_tmp);
 			$sql_tmp = str_replace($sql_count_part, " COUNT(*) ", $sql_tmp);
-		
+			
 			$last_order_by = explode("ORDER BY ", $sql_tmp);
 			if(count($last_order_by) > 1)
 			{
 				$sql_tmp = str_replace("ORDER BY ".end($last_order_by), "", $sql_tmp);
 			}
-		
+			
 			$sql_tmp = trim($sql_tmp);
 			$total_found = $this->query($sql_tmp, $params)->fetchOne();
-		}	
-		else	
-		{	
+		}
+		else
+		{
 			$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
-			$sql .= "\nLIMIT {$offset}, {$limit}";		
-			$result = $this->query($sql, $params)->fetchAll();				
+			$sql .= "\nLIMIT {$offset}, {$limit}";
+			$result = $this->query($sql, $params)->fetchAll();
 			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
 		}
 		
@@ -1002,8 +1073,23 @@ class DBManager
 		return $_response;
 	}
 	
+	/**
+	 * Begin transaction
+	 */
+	public function beginTransaction()
+	{
+		$this->connection->beginTransaction();
+	}
+	
+	/**
+	 * Commit transaction
+	 */
+	public function commit()
+	{
+		$this->connection->commit();
+	}
+	
 	
 	
 }
-
 
