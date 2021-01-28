@@ -1089,7 +1089,13 @@ class DBManager
 		$this->connection->commit();
 	}
 	
-	
+	/**
+	 * Rollback transaction
+	 */
+	public function rollBack()
+	{
+		$this->connection->rollBack();
+	}
 	
 }
 
