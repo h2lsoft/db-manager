@@ -274,7 +274,9 @@ class DBManager
 	public function fetchOne()
 	{
 		if(!is_object($this->query_stack[$this->query_id]))return false;
-		return $this->query_stack[$this->query_id]->fetch(PDO::FETCH_NUM)[0];
+		$rec = $this->query_stack[$this->query_id]->fetch(PDO::FETCH_NUM);
+		if(!$rec)return false;
+		return $rec[0];
 	}
 	
 	/**
