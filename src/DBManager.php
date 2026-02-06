@@ -1,6 +1,7 @@
 <?php
 
 namespace h2lsoft\DBManager;
+use ErrorException;
 use PDO;
 
 class DBManager
@@ -11,12 +12,8 @@ class DBManager
 	private $query_id = -1;
 	private $last_query;
 	private $last_query_params;
-	
 	private $soft_mode;
-	
 	private $default_user_UID;
-	
-	
 	private $_columns_forbidden = ['deleted', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by'];
 	private $_sql_functions = ['NOW()', 'CURRENT_DATE()'];
 	
@@ -24,18 +21,32 @@ class DBManager
 	private $_from_query_delete = false;
 	
 	private $dbQL = [];
-	
-	
+
+	private $debug = false;
+	private $debug_request_context = 'html'; // text, html, json
+
+
 	/**
 	 * DBManager constructor.
 	 *
 	 * @param bool $soft_mode (auto turn soft mode)
 	 * @param int|string $default_user_UID (default UID if soft mode is activated)
 	 */
-	public function __construct($soft_mode=true, $default_user_UID='')
+	public function __construct($soft_mode=true, $default_user_UID='', $debug=false)
 	{
 		$this->soft_mode = $soft_mode;
 		$this->default_user_UID = $default_user_UID;
+		$this->debug = $debug;
+	}
+
+	public function setDebug(bool $debug)
+	{
+		$this->debug = $debug;
+	}
+
+	public function setDebugRequestContext(string $format)
+	{
+		$this->debug_request_context = $format;
 	}
 	
 	private function error_interceptor($bool)
@@ -45,14 +56,98 @@ class DBManager
 		else
 			restore_exception_handler();
 	}
+
+	private function findRealCaller($trace)
+	{
+		foreach ($trace as $item) {
+			if (isset($item['file']) &&
+				strpos($item['file'], 'DBManager.php') === false &&
+				isset($item['line'])) {
+				return [
+					'file' => $item['file'],
+					'line' => $item['line']
+				];
+			}
+		}
+		return null;
+	}
+
 	
 	/**
 	 * @param $exception
 	 */
-	public function exception_handler($exception)
+	/*public function exception_handler($exception)
 	{
 		$message = $exception->getMessage();
-		trigger_error("DBM Error : ".$message, E_USER_ERROR);
+		$trace = debug_backtrace(0, 3) ?? null;
+
+		$added = '';
+		if($trace && isset($trace[0]['file']) && isset($trace[0]['line']))
+			$added = " in `{$trace['file']}` line {$trace['line']}";
+
+		trigger_error("DBM Error : {$message} {$added}", E_USER_ERROR);
+	}*/
+	public function exception_handler($exception)
+	{
+		restore_exception_handler();
+
+		$message = $exception->getMessage();
+		$file = $exception->getFile();
+		$line = $exception->getLine();
+
+		// Récupérer la stack trace
+		$trace = $exception->getTrace();
+
+		// Trouver le vrai appelant (hors DBManager)
+		$caller = $this->findRealCaller($trace);
+
+		// Dernière requête + params
+		$last_query = $this->getLastQuery();
+		$last_params = $this->getLastQueryParams();
+
+		// === Construire le message détaillé ===
+		$error = "<b>DBM Error:</b> {$message}<br>";
+
+		if ($last_query) {
+			$error .= "<code>[SQL]" . trim($last_query) . "<br>";
+
+			if (!empty($last_params)) {
+				$error .= "Params: ";
+				$params_str = [];
+				foreach ($last_params as $key => $value) {
+					$val = is_string($value) ? "'{$value}'" : $value;
+					$params_str[] = "{$key}={$val}";
+				}
+				$error .= implode(', ', $params_str) . "<br>";
+			}
+
+			$error .= "</code>";
+		}
+
+		if($caller)
+		{
+			$error .= "<pre>file <b>`{$caller['file']}`</b> on line <b>{$caller['line']}</b></pre>";
+		}
+
+		if($this->debug_request_context != 'json')
+		{
+			// $error = strip_tags($error);
+		}
+
+		if(!$this->debug)
+		{
+			http_response_code(500);
+			$error = "DBM error, please contact administrator";
+			if($this->debug_request_context == 'json')
+				die($error);
+		}
+		else
+		{
+			die($error);
+		}
+
+
+
 	}
 	
 	/**
@@ -182,7 +277,7 @@ class DBManager
 			$stmt = $this->prepare($sql);
 			foreach($binds as $bind => $value)
 			{
-				if(preg_match("/ID$/", $bind))
+				if($bind == 'id' || str_ends_with($bind, '_id'))
 					$stmt->bindValue($bind, $value, PDO::PARAM_INT);
 				else
 					$stmt->bindValue($bind, $value);
@@ -997,44 +1092,52 @@ class DBManager
 		$current_page = (int)$current_page;
 		if($current_page <= 0)$current_page = 1;
 		$offset = ($current_page-1) * $limit;
+		if($offset < 0)$offset = 0;
 		
 		$sql = trim($sql);
-		
 		if(!$sql_cal_found_mode)
 		{
 			$sql_tmp = $sql;
-			$sql .= "\nLIMIT {$offset}, {$limit}";
-			$result = $this->query($sql, $params)->fetchAll();
-			
 			$sql_tmp = str_replace(["SELECT\r\n", "SELECT\n"], "SELECT\n\n", $sql_tmp);
 			$sql_tmp = str_replace(["\tFROM", " FROM"], "\nFROM", $sql_tmp);
 			$sql_tmp = str_replace(["FROM\r\n", "FROM\n"], "FROM\n\n", $sql_tmp);
-			
+
 			$sql_count_part = str_extract("SELECT\n\n", "\nFROM\n\n", $sql_tmp);
 			$sql_tmp = str_replace($sql_count_part, " COUNT(*) ", $sql_tmp);
-			
-			$last_order_by = explode("ORDER BY ", $sql_tmp);
-			if(count($last_order_by) > 1)
+
+			if(strpos($sql_tmp, "\nORDER BY") !== false)
 			{
-				$sql_tmp = str_replace("ORDER BY ".end($last_order_by), "", $sql_tmp);
+				$sql_tmp = explode("\nORDER BY", $sql_tmp);
+				$sql_tmp = join("", array_slice($sql_tmp, 0, -1));
 			}
-			
-			$sql_tmp = trim($sql_tmp);
-			$total_found = $this->query($sql_tmp, $params)->fetchOne();
+
+			$total_found = $this->query(trim($sql_tmp), $params)->fetchOne();
+
+			$total_page = (int)ceil($total_found / $limit);
+			if($total_page > 0 && $current_page > $total_page)
+			{
+				$current_page = $total_page;
+				$offset = ($current_page-1) * $limit;
+			}
+
+			$sql .= "\nLIMIT {$offset}, {$limit}";
+			if($total_page == 0)
+			{
+				$current_page = 1;
+			}
+
+			$result = $this->query($sql, $params)->fetchAll();
 		}
 		else
 		{
 			$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
 			$sql .= "\nLIMIT {$offset}, {$limit}";
-			$result = $this->query($sql, $params)->fetchAll();
 			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
+			$result = $this->query($sql, $params)->fetchAll();
+
+			$total_page = (int)ceil($total_found / $limit);
+			if($current_page >= $total_page)$current_page = $total_page;
 		}
-		
-		
-		
-		$total_page = (int)ceil($total_found / $limit);
-		
-		
 		
 		$_response = [];
 		$_response['total'] = $total_found;
