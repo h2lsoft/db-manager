@@ -1,7 +1,6 @@
 <?php
 
 namespace h2lsoft\DBManager;
-use ErrorException;
 use PDO;
 
 class DBManager
@@ -15,8 +14,6 @@ class DBManager
 	private $soft_mode;
 	private $default_user_UID;
 	private $_columns_forbidden = ['deleted', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by'];
-	private $_sql_functions = ['NOW()', 'CURRENT_DATE()'];
-	
 	private $table;
 	private $_from_query_delete = false;
 	
@@ -28,10 +25,9 @@ class DBManager
 
 
 	/**
-	 * DBManager constructor.
-	 *
-	 * @param bool $soft_mode (auto turn soft mode)
-	 * @param int|string $default_user_UID (default UID if soft mode is activated)
+	 * @param bool $soft_mode enable soft delete and audit columns
+	 * @param int|string $default_user_UID default user id for audit
+	 * @param bool $debug enable debug mode
 	 */
 	public function __construct($soft_mode=true, $default_user_UID='', $debug=false)
 	{
@@ -111,17 +107,9 @@ class DBManager
 	}
 	
 	/**
-	 * Connection to database
+	 * connect to database
 	 *
-	 * @param string $driver
-	 * @param string $host
-	 * @param string $username
-	 * @param string $password
-	 * @param string $database
-	 * @param string $port
-	 * @param array  $pdo_options (see official documentation => example: [PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8"] )
-	 *
-	 * @return pdo link
+	 * @return PDO
 	 */
 	public function connect($driver='mysql', $host='localhost', $username='root', $password='', $database='', $port='',  $pdo_options=[])
 	{
@@ -134,8 +122,7 @@ class DBManager
 	}
 	
 	/**
-	 * Turn soft mode
-	 * @param $bool
+	 * enable or disable soft mode
 	 */
 	public function setSoftMode($bool)
 	{
@@ -143,7 +130,7 @@ class DBManager
 	}
 	
 	/**
-	 * Get current soft mode
+	 * get current soft mode state
 	 */
 	public function getSoftMode()
 	{
@@ -151,8 +138,7 @@ class DBManager
 	}
 	
 	/**
-	 * Assign a default UID for soft mode
-	 * @param int|string $UID
+	 * set default user id for audit columns
 	 */
 	public function setSoftModeDefaultUID($UID)
 	{
@@ -160,7 +146,7 @@ class DBManager
 	}
 	
 	/**
-	 * Get default UID for soft mode
+	 * get default user id for audit columns
 	 */
 	public function getSoftModeDefaultUID()
 	{
@@ -168,8 +154,7 @@ class DBManager
 	}
 	
 	/**
-	 * Get PDO connection link
-	 * @return mixed
+	 * get PDO connection object
 	 */
 	public function getConnectionLink()
 	{
@@ -177,9 +162,7 @@ class DBManager
 	}
 	
 	/**
-	 * Close connection
-	 *
-	 * @param string $name
+	 * close database connection
 	 */
 	public function close()
 	{
@@ -187,10 +170,7 @@ class DBManager
 	}
 	
 	/**
-	 * Set connection attribute (see official pdo documentation)
-	 *
-	 * @param $attribute
-	 * @param $value
+	 * set PDO attribute
 	 */
 	public function setAttribute($attribute, $value)
 	{
@@ -198,7 +178,7 @@ class DBManager
 	}
 	
 	/**
-	 * Purge query stack
+	 * purge old queries from stack (keeps last 10)
 	 */
 	protected function purgeQueryStack()
 	{
@@ -211,10 +191,9 @@ class DBManager
 	
 	
 	/**
-	 * Execute query
+	 * execute a SQL query with optional bound parameters
 	 *
-	 * @param string $sql
-	 * @param array $binds [parameters to protect :column ]
+	 * @return $this
 	 */
 	public function query($sql, $binds=[])
 	{
@@ -255,9 +234,7 @@ class DBManager
 	
 	
 	/**
-	 * Prepare statement
-	 *
-	 * @param $sql
+	 * prepare a SQL statement
 	 */
 	public function prepare($sql)
 	{
@@ -275,11 +252,7 @@ class DBManager
 	
 	
 	/**
-	 * fetch resultset
-	 *
-	 * @param int $fetch_mode
-	 *
-	 * @return  bool|array or object
+	 * fetch single row from last query
 	 */
 	public function fetch($fetch_mode=PDO::FETCH_ASSOC)
 	{
@@ -288,11 +261,7 @@ class DBManager
 	}
 	
 	/**
-	 * fetch object resultset
-	 *
-	 * @param int $fetch_mode
-	 *
-	 * @return  bool|object
+	 * fetch single row as object
 	 */
 	public function fetchObject()
 	{
@@ -301,11 +270,7 @@ class DBManager
 	
 	
 	/**
-	 * fetch all resultset
-	 *
-	 * @param int $fetch_mode
-	 *
-	 * @return  bool|array
+	 * fetch all rows from last query
 	 */
 	public function fetchAll($fetch_mode=PDO::FETCH_ASSOC)
 	{
@@ -314,9 +279,7 @@ class DBManager
 	}
 	
 	/**
-	 * Fetch all in object
-	 *
-	 * @return bool|array
+	 * fetch all rows as objects
 	 */
 	public function fetchObjectAll()
 	{
@@ -324,9 +287,7 @@ class DBManager
 	}
 	
 	/**
-	 * fetch and return the first column of resultset
-	 *
-	 * @return bool|string
+	 * fetch first column of first row
 	 */
 	public function fetchOne()
 	{
@@ -337,8 +298,7 @@ class DBManager
 	}
 	
 	/**
-	 * Fetch data with the first column
-	 * @return bool
+	 * fetch first column of all rows
 	 */
 	public function fetchAllOne()
 	{
@@ -348,9 +308,7 @@ class DBManager
 	
 	
 	/**
-	 * get count row
-	 *
-	 * @return int
+	 * get affected row count from last query
 	 */
 	public function rowCount()
 	{
@@ -361,9 +319,7 @@ class DBManager
 	
 	
 	/**
-	 * get last insert id
-	 *
-	 * @return mixed
+	 * get last auto-increment insert id
 	 */
 	public function lastInsertId()
 	{
@@ -371,8 +327,7 @@ class DBManager
 	}
 	
 	/**
-	 * Get last query
-	 * @return string last_query
+	 * get last executed SQL string
 	 */
 	public function getLastQuery()
 	{
@@ -380,8 +335,7 @@ class DBManager
 	}
 	
 	/**
-	 * Get last query paramaters
-	 * @return array
+	 * get last query parameters
 	 */
 	public function getLastQueryParams()
 	{
@@ -389,22 +343,22 @@ class DBManager
 	}
 	
 	/**
-	 * Debug last query
+	 * output last query and params as HTML (debug)
 	 */
 	public function dBugLastQuery()
 	{
 		echo "<br>last query => ";
 		
 		echo "<pre style='border:1px solid #ccc; padding:10px'>";
-		echo $this->getLastQuery();
+		echo htmlspecialchars($this->getLastQuery());
 		echo "</pre>";
-		
+
 		$params = $this->getLastQueryParams();
 		if(count($params) > 0)
 		{
 			echo "params => ";
 			echo "<pre style='border:1px solid #ccc; padding:10px'>";
-			print_r($params);
+			echo htmlspecialchars(print_r($params, true));
 			echo "</pre>";
 		}
 		
@@ -412,8 +366,7 @@ class DBManager
 	
 	
 	/**
-	 * Assign table for operation
-	 * @param $table
+	 * set active table for next operation
 	 *
 	 * @return $this
 	 */
@@ -422,16 +375,18 @@ class DBManager
 		$this->table = $table;
 		return $this;
 	}
+
+	/**
+	 * reset table name after a crud operation to prevent state leak
+	 */
+	private function resetTable()
+	{
+		$this->table = '';
+	}
 	
 	
 	/**
-	 * Insert a row
-	 *
-	 * @param array|object       $row
-	 * @param int    $created_by
-	 * @param string $table
-	 *
-	 * @return last inserted ID
+	 * insert a row and return the new id
 	 */
 	public function insert($row, $created_by='', $table='')
 	{
@@ -497,16 +452,13 @@ class DBManager
 			$this->handleException($e);
 		}
 
+		$this->resetTable();
 		return $this->lastInsertId();
 	}
-	
+
 	/**
-	 * Update a record
-	 *
-	 * @param array     	$row
-	 * @param string|array  $where if is numeric ID or array bind parameters are generated ['Column = :param_name', [':params_name' => 'value', ...]]
-	 * @param int    		$limit (default -1 no limit)
-	 * @param        		$table
+	 * update record(s), return affected row count
+	 * $where: numeric id, raw string, or ['clause', [':param' => value]]
 	 */
 	public function update($row, $where='', $limit=-1, $updated_by='', $table='')
 	{
@@ -629,18 +581,14 @@ class DBManager
 		}
 		
 		$this->_from_query_delete = false;
-		
+		$this->resetTable();
+
 		return $prepared->rowCount();
 	}
-	
-	
+
+
 	/**
-	 * Insert row in bulk mode
-	 *
-	 * @param array  $rows (associated array)
-	 * @param int 	 array_chunk
-	 * @param string $created_by
-	 * @param string $table
+	 * insert multiple rows in chunks inside a transaction
 	 */
 	public function insertBulk($rows, $chunk_size, $created_by='', $table='')
 	{
@@ -670,8 +618,6 @@ class DBManager
 		
 		$columns = $keys;
 		$placeholders = array_fill(0, count($columns), '?');
-		$columns_joined = join(',', $columns);
-
 		try
 		{
 			$this->beginTransaction();
@@ -710,19 +656,13 @@ class DBManager
 			$this->rollBack();
 			$this->handleException($e);
 		}
-		
+
+		$this->resetTable();
 	}
-	
-	
+
+
 	/**
-	 * Delete query
-	 *
-	 * @param  int|string|array      $where (if array example: ['ID = ? AND Name = ?', $ID, $Name])
-	 * @param string $limit
-	 * @param string $deleted_by
-	 * @param string $table
-	 *
-	 * @return mixed
+	 * delete record(s) — soft delete in soft mode, hard delete otherwise
 	 */
 	public function delete($where, $limit=-1, $deleted_by='', $table='')
 	{
@@ -776,19 +716,14 @@ class DBManager
 		
 		
 		$stmt = $this->prepare($sql);
-		return $this->execute($stmt, $_params)->rowCount();
-		
-		
+		$result = $this->execute($stmt, $_params)->rowCount();
+		$this->resetTable();
+
+		return $result;
 	}
-	
+
 	/**
-	 * Get a record by ID (if array multiple is returned)
-	 *
-	 * @param int|array $ID
-	 * @param string $fields
-	 * @param string $table
-	 *
-	 * @return array|bool
+	 * get record(s) by id — pass array for multiple
 	 */
 	public function getByID($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
 	{
@@ -815,28 +750,215 @@ class DBManager
 			
 			$records = $stmt->fetchAll($fetch_mode);
 		}
-		
+
+		$this->resetTable();
 		return $records;
 	}
-	
+
 	/**
-	 * Get a record by ID (if array multiple is returned)
-	 *
-	 * @param int|array $ID
-	 * @param string $fields
-	 * @param string $table
-	 *
-	 * @return array|bool
-	 * @deprecated use getByID
+	 * @deprecated use getByID()
 	 */
 	public function get($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
 	{
 		return $this->getByID($ID, $fields, $fetch_mode, $table);
 	}
-	
+
 	/**
-	 * Add dynamically table soft mode columns (deleted, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
+	 * count records in table
+	 *
+	 * @param string $where
+	 * @param array $params
 	 * @param string $table
+	 * @return int
+	 */
+	public function count($where='', $params=[], $table='')
+	{
+		if(empty($table))$table = $this->table;
+
+		$sql = "SELECT COUNT(*) FROM `{$table}`";
+
+		$where_parts = [];
+		if($this->soft_mode)
+		{
+			$where_parts[] = "`deleted` = 'NO'";
+		}
+		if(!empty($where))
+		{
+			$where_parts[] = $where;
+		}
+
+		if(count($where_parts))
+		{
+			$sql .= " WHERE " . implode(" AND ", $where_parts);
+		}
+
+		$result = (int)$this->query($sql, $params)->fetchOne();
+		$this->resetTable();
+
+		return $result;
+	}
+
+	/**
+	 * find one record by where clause
+	 *
+	 * @param string $where
+	 * @param array $params
+	 * @param string $fields
+	 * @param int $fetch_mode
+	 * @param string $table
+	 * @return array|false
+	 */
+	public function findOne($where='', $params=[], $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	{
+		if(empty($table))$table = $this->table;
+
+		$sql = "SELECT {$fields} FROM `{$table}`";
+
+		$where_parts = [];
+		if($this->soft_mode)
+		{
+			$where_parts[] = "`deleted` = 'NO'";
+		}
+		if(!empty($where))
+		{
+			$where_parts[] = $where;
+		}
+
+		if(count($where_parts))
+		{
+			$sql .= " WHERE " . implode(" AND ", $where_parts);
+		}
+
+		$sql .= " LIMIT 1";
+
+		$result = $this->query($sql, $params)->fetch($fetch_mode);
+		$this->resetTable();
+
+		return $result;
+	}
+
+	/**
+	 * find all records by where clause
+	 *
+	 * @param string $where
+	 * @param array $params
+	 * @param string $fields
+	 * @param string $order_by
+	 * @param int $limit (0 = no limit)
+	 * @param int $fetch_mode
+	 * @param string $table
+	 * @return array|false
+	 */
+	public function findAll($where='', $params=[], $fields='*', $order_by='', $limit=0, $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	{
+		if(empty($table))$table = $this->table;
+
+		$sql = "SELECT {$fields} FROM `{$table}`";
+
+		$where_parts = [];
+		if($this->soft_mode)
+		{
+			$where_parts[] = "`deleted` = 'NO'";
+		}
+		if(!empty($where))
+		{
+			$where_parts[] = $where;
+		}
+
+		if(count($where_parts))
+		{
+			$sql .= " WHERE " . implode(" AND ", $where_parts);
+		}
+
+		if(!empty($order_by))
+		{
+			$sql .= " ORDER BY {$order_by}";
+		}
+
+		if($limit > 0)
+		{
+			$sql .= " LIMIT " . (int)$limit;
+		}
+
+		$result = $this->query($sql, $params)->fetchAll($fetch_mode);
+		$this->resetTable();
+
+		return $result;
+	}
+
+	/**
+	 * insert or update on duplicate key
+	 *
+	 * @param array $row
+	 * @param array $update_columns columns to update on duplicate (empty = all)
+	 * @param string $created_by
+	 * @param string $table
+	 * @return int last insert id
+	 */
+	public function upsert($row, $update_columns=[], $created_by='', $table='')
+	{
+		if(empty($table))$table = $this->table;
+
+		if($this->soft_mode)
+		{
+			$keys = array_keys($row);
+			foreach($keys as $key)
+			{
+				if(in_array($key, $this->_columns_forbidden))
+				{
+					trigger_error("DBM Error : `{$key}` is forbidden", E_USER_ERROR);
+				}
+			}
+
+			$row['created_at'] = date('Y-m-d H:i:s');
+			$row['created_by'] = (empty($created_by)) ? $this->default_user_UID : $created_by;
+		}
+
+		$columns = array_keys($row);
+		$columns_str = implode(', ', array_map(fn($c) => "`{$c}`", $columns));
+		$values_str = implode(', ', array_map(fn($c) => ":{$c}", $columns));
+
+		// columns to update on duplicate
+		if(empty($update_columns))
+		{
+			$update_columns = array_diff($columns, ['created_at', 'created_by']);
+		}
+
+		$update_str = implode(', ', array_map(fn($c) => "`{$c}` = VALUES(`{$c}`)", $update_columns));
+
+		if($this->soft_mode)
+		{
+			$update_str .= ", `updated_at` = '" . date('Y-m-d H:i:s') . "'";
+			$update_str .= ", `updated_by` = '" . ((empty($created_by)) ? $this->default_user_UID : $created_by) . "'";
+		}
+
+		$sql = "INSERT INTO `{$table}` ({$columns_str}) VALUES ({$values_str})";
+		$sql .= "\nON DUPLICATE KEY UPDATE {$update_str}";
+
+		$this->purgeQueryStack();
+		$this->last_query = $sql;
+		$this->last_query_params = $row;
+
+		try
+		{
+			$prepared = $this->connection->prepare($sql);
+			foreach($columns as $column)
+			{
+				$prepared->bindValue(":{$column}", $row[$column]);
+			}
+			$prepared->execute();
+		}
+		catch(\Throwable $e)
+		{
+			$this->handleException($e);
+		}
+
+		$this->resetTable();
+		return $this->lastInsertId();
+	}
+
+	/**
+	 * add soft mode columns to table if missing
 	 */
 	public function addSoftModeColumns($table='')
 	{
@@ -880,25 +1002,12 @@ class DBManager
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `deleted_by` VARCHAR(255) NULL";
 		
 		
-		// force field at end
-		/*$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `deleted` END";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `created_at` AFTER `deleted`";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `created_by` AFTER `created_at`";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `updated_at` AFTER `created_by`";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `updated_by` AFTER `updated_at`";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `deleted_at` AFTER `updated_by`";
-		$sqls[] = "ALTER TABLE `{$table}` MODIFY COLUMN `deleted_by` AFTER `deleted_at`";
-		*/
-		
 		foreach($sqls as $sql)
 			$this->query($sql);
 	}
 	
 	/**
-	 * SELECT clause for query
-	 * @param string $fields
-	 *
-	 * @return $this
+	 * set SELECT clause for query builder
 	 */
 	public function select($fields="*")
 	{
@@ -908,10 +1017,7 @@ class DBManager
 	}
 	
 	/**
-	 * FROM clause for query
-	 * @param string $tables
-	 *
-	 * @return $this
+	 * set FROM clause for query builder
 	 */
 	public function from($tables)
 	{
@@ -920,10 +1026,7 @@ class DBManager
 	}
 	
 	/**
-	 * WHERE clause for query
-	 * @param string $where
-	 *
-	 * @return $this
+	 * add WHERE condition (multiple calls are joined with AND)
 	 */
 	public function where($where)
 	{
@@ -932,11 +1035,7 @@ class DBManager
 	}
 	
 	/**
-	 * GROUP BY clause for query
-	 *
-	 * @param string $fields
-	 *
-	 * @return $this
+	 * set GROUP BY clause
 	 */
 	public function groupBy($groupBy)
 	{
@@ -945,11 +1044,7 @@ class DBManager
 	}
 
 	/**
-	 * HAVING clause for query
-	 *
-	 * @param string $having
-	 *
-	 * @return $this
+	 * set HAVING clause
 	 */
 	public function having($having)
 	{
@@ -958,11 +1053,7 @@ class DBManager
 	}
 	
 	/**
-	 * ORDER BY clause for query
-	 *
-	 * @param $orderBy
-	 *
-	 * @return $this
+	 * set ORDER BY clause
 	 */
 	public function orderBy($orderBy)
 	{
@@ -971,11 +1062,7 @@ class DBManager
 	}
 	
 	/**
-	 * LIMIT clause for query
-	 *
-	 * @param int $limit
-	 *
-	 * @return $this
+	 * set LIMIT clause
 	 */
 	public function limit($limit)
 	{
@@ -984,7 +1071,7 @@ class DBManager
 	}
 	
 	/**
-	 * Execute constructed sql
+	 * execute built query from query builder
 	 */
 	public function executeSQL($params=[])
 	{
@@ -993,9 +1080,7 @@ class DBManager
 	}
 	
 	/**
-	 * Construct query
-	 *
-	 * @return string
+	 * build SQL string from query builder and reset state
 	 */
 	public function getSQL()
 	{
@@ -1011,7 +1096,7 @@ class DBManager
 		}
 		
 		if($this->soft_mode)
-			$this->where("deleted = 'no'");
+			$this->where("deleted = 'NO'");
 		
 		$sql = "SELECT\n";
 		$sql .= "\t\t{$this->dbQL['SELECT']}\n";
@@ -1076,14 +1161,7 @@ class DBManager
 	
 	
 	/**
-	 * Get full pagination
-	 *
-	 * @param string $sql
-	 * @param array  $params
-	 * @param int    $limit
-	 * @param int    $current_page
-	 *
-	 *
+	 * paginate a query — returns array with total, per_page, data, etc.
 	 */
 	public function paginate($sql, $params=[], $current_page=1, $limit=20, $sql_cal_found_mode=false)
 	{
@@ -1113,7 +1191,7 @@ class DBManager
 				$offset = ($current_page-1) * $limit;
 			}
 
-			$sql .= "\nLIMIT {$offset}, {$limit}";
+			$sql .= "\nLIMIT " . (int)$offset . ", " . (int)$limit;
 			if($total_page == 0)
 			{
 				$current_page = 1;
@@ -1124,7 +1202,7 @@ class DBManager
 		else
 		{
 			$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
-			$sql .= "\nLIMIT {$offset}, {$limit}";
+			$sql .= "\nLIMIT " . (int)$offset . ", " . (int)$limit;
 			$result = $this->query($sql, $params)->fetchAll();
 			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
 
@@ -1172,9 +1250,7 @@ class DBManager
 	}
 	
 	/**
-	 * Check if currently inside a transaction
-	 *
-	 * @return bool
+	 * check if inside a transaction
 	 */
 	public function inTransaction()
 	{
@@ -1182,9 +1258,7 @@ class DBManager
 	}
 
 	/**
-	 * Get current transaction nesting depth
-	 *
-	 * @return int
+	 * get transaction nesting depth (0 = none)
 	 */
 	public function getTransactionLevel()
 	{
@@ -1192,7 +1266,7 @@ class DBManager
 	}
 
 	/**
-	 * Begin transaction (supports nesting via savepoints)
+	 * begin transaction (nested calls create savepoints)
 	 */
 	public function beginTransaction()
 	{
@@ -1209,7 +1283,7 @@ class DBManager
 	}
 
 	/**
-	 * Commit transaction (supports nesting via savepoints)
+	 * commit transaction (releases savepoint if nested)
 	 */
 	public function commit()
 	{
@@ -1236,7 +1310,7 @@ class DBManager
 	}
 
 	/**
-	 * Rollback transaction (supports nesting via savepoints)
+	 * rollback transaction (rolls back to savepoint if nested)
 	 */
 	public function rollBack()
 	{
@@ -1255,10 +1329,7 @@ class DBManager
 	}
 
 	/**
-	 * Execute callback inside a transaction (auto commit/rollback)
-	 *
-	 * @param callable $callback
-	 * @return mixed callback return value
+	 * run callback in a transaction — auto commit/rollback, throws on error
 	 */
 	public function transaction(callable $callback)
 	{
@@ -1278,12 +1349,8 @@ class DBManager
 	}
 
 	/**
-	 * Execute callback inside a transaction (auto commit/rollback)
-	 * Returns true on success, false on failure (no exception thrown)
-	 *
-	 * @param callable $callback
-	 * @param mixed &$error exception object if failed
-	 * @return bool
+	 * run callback in a transaction — returns true/false, no exception
+	 * pass $error by reference to get the exception on failure
 	 */
 	public function safeTransaction(callable $callback, &$error=null)
 	{
