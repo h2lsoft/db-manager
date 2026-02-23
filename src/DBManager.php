@@ -21,6 +21,7 @@ class DBManager
 	private $_from_query_delete = false;
 	
 	private $dbQL = [];
+	private $transaction_level = 0;
 
 	private $debug = false;
 	private $debug_request_context = 'html'; // text, html, json
@@ -49,12 +50,9 @@ class DBManager
 		$this->debug_request_context = $format;
 	}
 	
-	private function error_interceptor($bool)
+	private function handleException($e)
 	{
-		if($bool)
-			set_exception_handler([$this, 'exception_handler']);
-		else
-			restore_exception_handler();
+		$this->exception_handler($e);
 	}
 
 	private function findRealCaller($trace)
@@ -72,82 +70,44 @@ class DBManager
 		return null;
 	}
 
-	
-	/**
-	 * @param $exception
-	 */
-	/*public function exception_handler($exception)
-	{
-		$message = $exception->getMessage();
-		$trace = debug_backtrace(0, 3) ?? null;
-
-		$added = '';
-		if($trace && isset($trace[0]['file']) && isset($trace[0]['line']))
-			$added = " in `{$trace['file']}` line {$trace['line']}";
-
-		trigger_error("DBM Error : {$message} {$added}", E_USER_ERROR);
-	}*/
 	public function exception_handler($exception)
 	{
-		restore_exception_handler();
-
 		$message = $exception->getMessage();
-		$file = $exception->getFile();
-		$line = $exception->getLine();
 
-		// Récupérer la stack trace
-		$trace = $exception->getTrace();
+		// build detailed message in debug mode
+		$detail = "DBM Error: {$message}";
 
-		// Trouver le vrai appelant (hors DBManager)
-		$caller = $this->findRealCaller($trace);
-
-		// Dernière requête + params
 		$last_query = $this->getLastQuery();
 		$last_params = $this->getLastQueryParams();
 
-		// === Construire le message détaillé ===
-		$error = "<b>DBM Error:</b> {$message}<br>";
+		if($last_query)
+		{
+			$detail .= " [SQL] " . trim($last_query);
 
-		if ($last_query) {
-			$error .= "<code>[SQL]" . trim($last_query) . "<br>";
-
-			if (!empty($last_params)) {
-				$error .= "Params: ";
+			if(!empty($last_params))
+			{
 				$params_str = [];
-				foreach ($last_params as $key => $value) {
+				foreach($last_params as $key => $value)
+				{
 					$val = is_string($value) ? "'{$value}'" : $value;
 					$params_str[] = "{$key}={$val}";
 				}
-				$error .= implode(', ', $params_str) . "<br>";
+				$detail .= " | Params: " . implode(', ', $params_str);
 			}
-
-			$error .= "</code>";
 		}
 
+		$caller = $this->findRealCaller($exception->getTrace());
 		if($caller)
 		{
-			$error .= "<pre>file <b>`{$caller['file']}`</b> on line <b>{$caller['line']}</b></pre>";
-		}
-
-		if($this->debug_request_context != 'json')
-		{
-			// $error = strip_tags($error);
+			$detail .= " in `{$caller['file']}` on line {$caller['line']}";
 		}
 
 		if(!$this->debug)
 		{
-			http_response_code(500);
-			$error = "DBM error, please contact administrator";
-			if($this->debug_request_context == 'json')
-				die($error);
-		}
-		else
-		{
-			die($error);
+			$detail = "DBM error, please contact administrator";
 		}
 
-
-
+		throw new \RuntimeException($detail, 0, $exception);
 	}
 	
 	/**
@@ -167,10 +127,8 @@ class DBManager
 	{
 		$dsn = "{$driver}:host={$host};dbname={$database};port={$port}";
 		
-		// $this->error_interceptor(1);
 		$this->connection = new PDO($dsn, $username, $password, $pdo_options);
 		$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-		// $this->error_interceptor(0);
 		
 		return $this->connection;
 	}
@@ -246,8 +204,8 @@ class DBManager
 	{
 		if(count($this->query_stack) >= 20)
 		{
-			$this->query_stack = [];
-			$this->query_id = 0;
+			$this->query_stack = array_slice($this->query_stack, -10, null, false);
+			$this->query_id = count($this->query_stack) - 1;
 		}
 	}
 	
@@ -267,26 +225,30 @@ class DBManager
 			$this->last_query_params = $binds;
 		}
 		
-		$this->error_interceptor(1);
-		if(!count($binds))
+		try
 		{
-			$this->query_stack[++$this->query_id] = $this->connection->query($sql);
-		}
-		else
-		{
-			$stmt = $this->prepare($sql);
-			foreach($binds as $bind => $value)
+			if(!count($binds))
 			{
-				if($bind == 'id' || str_ends_with($bind, '_id'))
-					$stmt->bindValue($bind, $value, PDO::PARAM_INT);
-				else
-					$stmt->bindValue($bind, $value);
+				$this->query_stack[++$this->query_id] = $this->connection->query($sql);
 			}
-			$stmt->execute();
-			$this->query_stack[++$this->query_id] = $stmt;
+			else
+			{
+				$stmt = $this->prepare($sql);
+				foreach($binds as $bind => $value)
+				{
+					if($bind == 'id' || str_ends_with($bind, '_id'))
+						$stmt->bindValue($bind, $value, PDO::PARAM_INT);
+					else
+						$stmt->bindValue($bind, $value);
+				}
+				$stmt->execute();
+				$this->query_stack[++$this->query_id] = $stmt;
+			}
 		}
-		
-		$this->error_interceptor(0);
+		catch(\Throwable $e)
+		{
+			$this->handleException($e);
+		}
 		
 		return $this;
 	}
@@ -518,18 +480,23 @@ class DBManager
 		$this->last_query = $stmt;
 		$this->last_query_params = $row;
 		
-		$this->error_interceptor(1);
-		$prepared = $this->connection->prepare($stmt);
-		
-		// bind parameters
-		foreach($columns as $column)
+		try
 		{
-			$prepared->bindValue(":{$column}", $row[$column]);
+			$prepared = $this->connection->prepare($stmt);
+
+			// bind parameters
+			foreach($columns as $column)
+			{
+				$prepared->bindValue(":{$column}", $row[$column]);
+			}
+
+			$prepared->execute();
 		}
-		
-		$prepared->execute();
-		$this->error_interceptor(0);
-		
+		catch(\Throwable $e)
+		{
+			$this->handleException($e);
+		}
+
 		return $this->lastInsertId();
 	}
 	
@@ -594,7 +561,8 @@ class DBManager
 				// ID found
 				if(is_numeric($where))
 				{
-					$where_dyn[] = "`ID` = {$where}";
+					$where_dyn[] = "`ID` = :_where_id";
+					$_params['_where_id'] = (int)$where;
 				}
 				else
 				{
@@ -632,7 +600,7 @@ class DBManager
 		// add limit
 		if($limit != -1 && is_numeric($limit))
 		{
-			$sql .= "\nLIMIT {$limit}";
+			$sql .= "\nLIMIT " . (int)$limit;
 		}
 		
 		
@@ -641,19 +609,24 @@ class DBManager
 		$this->last_query = $sql;
 		$this->last_query_params = $_params;
 		
-		$this->error_interceptor(1);
-		$prepared = $this->connection->prepare($sql);
-		
-		if(count($_params))
+		try
 		{
-			foreach($_params as $p => $v)
+			$prepared = $this->connection->prepare($sql);
+
+			if(count($_params))
 			{
-				$prepared->bindValue($p, $v);
+				foreach($_params as $p => $v)
+				{
+					$prepared->bindValue($p, $v);
+				}
 			}
+
+			$prepared->execute();
 		}
-		
-		$affected_rows = $prepared->execute();
-		$this->error_interceptor(0);
+		catch(\Throwable $e)
+		{
+			$this->handleException($e);
+		}
 		
 		$this->_from_query_delete = false;
 		
@@ -695,44 +668,48 @@ class DBManager
 			$keys[] = 'created_at';
 		}
 		
-		$this->error_interceptor(1);
-		
 		$columns = $keys;
 		$placeholders = array_fill(0, count($columns), '?');
 		$columns_joined = join(',', $columns);
-		
-		$this->connection->beginTransaction();
-		foreach($rows as $rows_splitted)
+
+		try
 		{
-			$sql = "INSERT INTO `{$table}` ";
-			$sql .= "	(".join(',', $columns).") ";
-			$sql .= " VALUES\n";
-			
-			$init = false;
-			$values = [];
-			foreach($rows_splitted as $row)
+			$this->beginTransaction();
+			foreach($rows as $rows_splitted)
 			{
-				if($init)$sql .= ",\n";
-				$sql .= "(".join(',', $placeholders).")";
-				$init = true;
-				
-				if($this->soft_mode)
+				$sql = "INSERT INTO `{$table}` ";
+				$sql .= "	(".join(',', $columns).") ";
+				$sql .= " VALUES\n";
+
+				$init = false;
+				$values = [];
+				foreach($rows_splitted as $row)
 				{
-					$row['create_at'] = now();
-					$row['create_by'] = $created_by;
+					if($init)$sql .= ",\n";
+					$sql .= "(".join(',', $placeholders).")";
+					$init = true;
+
+					if($this->soft_mode)
+					{
+						$row['created_at'] = date('Y-m-d H:i:s');
+						$row['created_by'] = (empty($created_by)) ? $this->default_user_UID : $created_by;
+					}
+
+					foreach($row as $key => $val)
+						$values[] = $val;
 				}
-				
-				foreach($row as $key => $val)
-					$values[] = $val;
+
+				$stmt = $this->prepare($sql);
+				$stmt->execute($values);
 			}
-			
-			$stmt = $this->prepare($sql);
-			$stmt->execute($values);
+
+			$this->commit();
 		}
-		
-		$this->connection->commit();
-		
-		$this->error_interceptor(0);
+		catch(\Throwable $e)
+		{
+			$this->rollBack();
+			$this->handleException($e);
+		}
 		
 	}
 	
@@ -776,7 +753,8 @@ class DBManager
 				
 				if(is_numeric($where))
 				{
-					$sql .= " ID = {$where} ";
+					$sql .= " ID = ? ";
+					$_params[] = (int)$where;
 				}
 				else
 				{
@@ -791,9 +769,9 @@ class DBManager
 		}
 		
 		// limit
-		if($limit != -1)
+		if($limit != -1 && is_numeric($limit))
 		{
-			$sql .= " LIMIT {$limit} ";
+			$sql .= " LIMIT " . (int)$limit;
 		}
 		
 		
@@ -853,7 +831,7 @@ class DBManager
 	 */
 	public function get($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
 	{
-		return $this->getByID($ID, $fields, $fetch_mode);
+		return $this->getByID($ID, $fields, $fetch_mode, $table);
 	}
 	
 	/**
@@ -965,6 +943,19 @@ class DBManager
 		$this->dbQL['GROUP BY'] = $groupBy;
 		return $this;
 	}
+
+	/**
+	 * HAVING clause for query
+	 *
+	 * @param string $having
+	 *
+	 * @return $this
+	 */
+	public function having($having)
+	{
+		$this->dbQL['HAVING'] = $having;
+		return $this;
+	}
 	
 	/**
 	 * ORDER BY clause for query
@@ -1057,7 +1048,14 @@ class DBManager
 			$sql .= "\nGROUP BY\n";
 			$sql .= "\t\t{$this->dbQL['GROUP BY']}\n";
 		}
-		
+
+		// having
+		if(isset($this->dbQL['HAVING']))
+		{
+			$sql .= "\nHAVING\n";
+			$sql .= "\t\t{$this->dbQL['HAVING']}\n";
+		}
+
 		// order by
 		if(isset($this->dbQL['ORDER BY']))
 		{
@@ -1097,21 +1095,16 @@ class DBManager
 		$sql = trim($sql);
 		if(!$sql_cal_found_mode)
 		{
-			$sql_tmp = $sql;
-			$sql_tmp = str_replace(["SELECT\r\n", "SELECT\n"], "SELECT\n\n", $sql_tmp);
-			$sql_tmp = str_replace(["\tFROM", " FROM"], "\nFROM", $sql_tmp);
-			$sql_tmp = str_replace(["FROM\r\n", "FROM\n"], "FROM\n\n", $sql_tmp);
-
-			$sql_count_part = str_extract("SELECT\n\n", "\nFROM\n\n", $sql_tmp);
-			$sql_tmp = str_replace($sql_count_part, " COUNT(*) ", $sql_tmp);
-
-			if(strpos($sql_tmp, "\nORDER BY") !== false)
+			// strip ORDER BY from count query for performance
+			$sql_inner = $sql;
+			if(preg_match('/\bORDER\s+BY\b/si', $sql_inner))
 			{
-				$sql_tmp = explode("\nORDER BY", $sql_tmp);
-				$sql_tmp = join("", array_slice($sql_tmp, 0, -1));
+				$sql_inner = explode("\nORDER BY", $sql_inner);
+				$sql_inner = join("", array_slice($sql_inner, 0, -1));
 			}
 
-			$total_found = $this->query(trim($sql_tmp), $params)->fetchOne();
+			$sql_count = "SELECT COUNT(*) FROM ({$sql_inner}) AS _count_query";
+			$total_found = $this->query(trim($sql_count), $params)->fetchOne();
 
 			$total_page = (int)ceil($total_found / $limit);
 			if($total_page > 0 && $current_page > $total_page)
@@ -1132,8 +1125,8 @@ class DBManager
 		{
 			$sql = str_replace(["SELECT\n", "SELECT\r\n"], "SELECT\nSQL_CALC_FOUND_ROWS\n", $sql);
 			$sql .= "\nLIMIT {$offset}, {$limit}";
-			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
 			$result = $this->query($sql, $params)->fetchAll();
+			$total_found = $this->query("SELECT FOUND_ROWS()")->fetchOne();
 
 			$total_page = (int)ceil($total_found / $limit);
 			if($current_page >= $total_page)$current_page = $total_page;
@@ -1179,27 +1172,131 @@ class DBManager
 	}
 	
 	/**
-	 * Begin transaction
+	 * Check if currently inside a transaction
+	 *
+	 * @return bool
+	 */
+	public function inTransaction()
+	{
+		return $this->transaction_level > 0;
+	}
+
+	/**
+	 * Get current transaction nesting depth
+	 *
+	 * @return int
+	 */
+	public function getTransactionLevel()
+	{
+		return $this->transaction_level;
+	}
+
+	/**
+	 * Begin transaction (supports nesting via savepoints)
 	 */
 	public function beginTransaction()
 	{
-		$this->connection->beginTransaction();
+		if($this->transaction_level == 0)
+		{
+			$this->connection->beginTransaction();
+		}
+		else
+		{
+			$this->connection->exec("SAVEPOINT sp_{$this->transaction_level}");
+		}
+
+		$this->transaction_level++;
 	}
-	
+
 	/**
-	 * Commit transaction
+	 * Commit transaction (supports nesting via savepoints)
 	 */
 	public function commit()
 	{
-		$this->connection->commit();
+		if($this->transaction_level <= 0) return;
+
+		$this->transaction_level--;
+
+		try
+		{
+			if($this->transaction_level == 0)
+			{
+				$this->connection->commit();
+			}
+			else
+			{
+				$this->connection->exec("RELEASE SAVEPOINT sp_{$this->transaction_level}");
+			}
+		}
+		catch(\Throwable $e)
+		{
+			$this->transaction_level++;
+			throw $e;
+		}
 	}
-	
+
 	/**
-	 * Rollback transaction
+	 * Rollback transaction (supports nesting via savepoints)
 	 */
 	public function rollBack()
 	{
-		$this->connection->rollBack();
+		if($this->transaction_level <= 0) return;
+
+		$this->transaction_level--;
+
+		if($this->transaction_level == 0)
+		{
+			$this->connection->rollBack();
+		}
+		else
+		{
+			$this->connection->exec("ROLLBACK TO SAVEPOINT sp_{$this->transaction_level}");
+		}
+	}
+
+	/**
+	 * Execute callback inside a transaction (auto commit/rollback)
+	 *
+	 * @param callable $callback
+	 * @return mixed callback return value
+	 */
+	public function transaction(callable $callback)
+	{
+		$this->beginTransaction();
+
+		try
+		{
+			$result = $callback($this);
+			$this->commit();
+			return $result;
+		}
+		catch(\Throwable $e)
+		{
+			$this->rollBack();
+			throw $e;
+		}
+	}
+
+	/**
+	 * Execute callback inside a transaction (auto commit/rollback)
+	 * Returns true on success, false on failure (no exception thrown)
+	 *
+	 * @param callable $callback
+	 * @param mixed &$error exception object if failed
+	 * @return bool
+	 */
+	public function safeTransaction(callable $callback, &$error=null)
+	{
+		try
+		{
+			$this->transaction($callback);
+			return true;
+		}
+		catch(\Throwable $e)
+		{
+			$error = $e;
+			return false;
+		}
 	}
 	
 }
