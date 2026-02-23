@@ -5,53 +5,67 @@ use PDO;
 
 class DBManager
 {
-	public $connection;
-	
-	private $query_stack = [];
-	private $query_id = -1;
-	private $last_query;
-	private $last_query_params;
-	private $soft_mode;
-	private $default_user_UID;
-	private $_columns_forbidden = ['deleted', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by'];
-	private $table;
-	private $_from_query_delete = false;
-	
-	private $dbQL = [];
-	private $transaction_level = 0;
+	public ?PDO $connection = null;
 
-	private $debug = false;
-	private $debug_request_context = 'html'; // text, html, json
+	private array $query_stack = [];
+	private int $query_id = -1;
+	private ?string $last_query = null;
+	private ?array $last_query_params = null;
+	private bool $soft_mode;
+	private string $default_user_UID;
+	private array $_columns_forbidden = ['deleted', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by'];
+	private string $table = '';
+	private bool $_from_query_delete = false;
+
+	private array $dbQL = [];
+	private int $transaction_level = 0;
+
+	private bool $debug = false;
+	private string $debug_request_context = 'html'; // text, html, json
 
 
 	/**
 	 * @param bool $soft_mode enable soft delete and audit columns
-	 * @param int|string $default_user_UID default user id for audit
+	 * @param string $default_user_UID default user id for audit
 	 * @param bool $debug enable debug mode
 	 */
-	public function __construct($soft_mode=true, $default_user_UID='', $debug=false)
+	public function __construct(bool $soft_mode = true, string $default_user_UID = '', bool $debug = false)
 	{
 		$this->soft_mode = $soft_mode;
 		$this->default_user_UID = $default_user_UID;
 		$this->debug = $debug;
 	}
 
-	public function setDebug(bool $debug)
+	/**
+	 * enable or disable debug mode
+	 */
+	public function setDebug(bool $debug): void
 	{
 		$this->debug = $debug;
 	}
 
-	public function setDebugRequestContext(string $format)
+	/**
+	 * set debug output format (text, html, json)
+	 */
+	public function setDebugRequestContext(string $format): void
 	{
 		$this->debug_request_context = $format;
 	}
-	
-	private function handleException($e)
+
+	/**
+	 * handle exception via the exception handler
+	 */
+	private function handleException(\Throwable $e): void
 	{
 		$this->exception_handler($e);
 	}
 
-	private function findRealCaller($trace)
+	/**
+	 * find the first caller outside DBManager in a stack trace
+	 *
+	 * @return array{file: string, line: int}|null
+	 */
+	private function findRealCaller(array $trace): ?array
 	{
 		foreach ($trace as $item) {
 			if (isset($item['file']) &&
@@ -66,7 +80,10 @@ class DBManager
 		return null;
 	}
 
-	public function exception_handler($exception)
+	/**
+	 * format exception with SQL context and throw RuntimeException
+	 */
+	public function exception_handler(\Throwable $exception): void
 	{
 		$message = $exception->getMessage();
 
@@ -105,82 +122,83 @@ class DBManager
 
 		throw new \RuntimeException($detail, 0, $exception);
 	}
-	
+
 	/**
 	 * connect to database
-	 *
-	 * @return PDO
 	 */
-	public function connect($driver='mysql', $host='localhost', $username='root', $password='', $database='', $port='',  $pdo_options=[])
+	public function connect(string $driver = 'mysql', string $host = 'localhost', string $username = 'root', string $password = '', string $database = '', string $port = '', array $pdo_options = []): PDO
 	{
 		$dsn = "{$driver}:host={$host};dbname={$database};port={$port}";
-		
+
 		$this->connection = new PDO($dsn, $username, $password, $pdo_options);
 		$this->connection->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-		
+
 		return $this->connection;
 	}
-	
+
 	/**
 	 * enable or disable soft mode
 	 */
-	public function setSoftMode($bool)
+	public function setSoftMode(bool $bool): void
 	{
 		$this->soft_mode = $bool;
 	}
-	
+
 	/**
 	 * get current soft mode state
 	 */
-	public function getSoftMode()
+	public function getSoftMode(): bool
 	{
 		return $this->soft_mode;
 	}
-	
+
 	/**
 	 * set default user id for audit columns
 	 */
-	public function setSoftModeDefaultUID($UID)
+	public function setSoftModeDefaultUID(string $UID): void
 	{
 		$this->default_user_UID = $UID;
 	}
-	
+
 	/**
 	 * get default user id for audit columns
 	 */
-	public function getSoftModeDefaultUID()
+	public function getSoftModeDefaultUID(): string
 	{
 		return $this->default_user_UID;
 	}
-	
+
 	/**
 	 * get PDO connection object
 	 */
-	public function getConnectionLink()
+	public function getConnectionLink(): ?PDO
 	{
 		return $this->connection;
 	}
-	
+
 	/**
 	 * close database connection
 	 */
-	public function close()
+	public function close(): void
 	{
 		$this->connection = null;
 	}
-	
+
 	/**
 	 * set PDO attribute
+	 *
+	 * @param int $attribute PDO::ATTR_* constant
+	 * @param mixed $value
 	 */
-	public function setAttribute($attribute, $value)
+	public function setAttribute(int $attribute, $value): void
 	{
 		$this->connection->setAttribute($attribute, $value);
 	}
-	
+
 	/**
 	 * purge old queries from stack (keeps last 10)
 	 */
-	protected function purgeQueryStack()
+	protected function purgeQueryStack(): void
 	{
 		if(count($this->query_stack) >= 20)
 		{
@@ -188,14 +206,12 @@ class DBManager
 			$this->query_id = count($this->query_stack) - 1;
 		}
 	}
-	
-	
+
+
 	/**
 	 * execute a SQL query with optional bound parameters
-	 *
-	 * @return $this
 	 */
-	public function query($sql, $binds=[])
+	public function query(string $sql, array $binds = []): self
 	{
 		$this->purgeQueryStack();
 		if($sql != "SELECT FOUND_ROWS()")
@@ -203,7 +219,7 @@ class DBManager
 			$this->last_query = $sql;
 			$this->last_query_params = $binds;
 		}
-		
+
 		try
 		{
 			if(!count($binds))
@@ -228,66 +244,79 @@ class DBManager
 		{
 			$this->handleException($e);
 		}
-		
+
 		return $this;
 	}
-	
-	
+
+
 	/**
 	 * prepare a SQL statement
 	 */
-	public function prepare($sql)
+	public function prepare(string $sql): \PDOStatement
 	{
 		$this->last_query = $sql;
 		$stmt = $this->connection->prepare($sql);
 		return $stmt;
 	}
-	
-	public function execute($stmt, $binds=[])
+
+	/**
+	 * execute a prepared statement with binds
+	 */
+	public function execute(\PDOStatement $stmt, array $binds = []): \PDOStatement
 	{
 		$this->last_query_params = $binds;
 		$stmt->execute($binds);
 		return $stmt;
 	}
-	
-	
+
+
 	/**
 	 * fetch single row from last query
+	 *
+	 * @return array|object|false
 	 */
-	public function fetch($fetch_mode=PDO::FETCH_ASSOC)
+	public function fetch(int $fetch_mode = PDO::FETCH_ASSOC)
 	{
 		if(!is_object($this->query_stack[$this->query_id]))return false;
 		return $this->query_stack[$this->query_id]->fetch($fetch_mode);
 	}
-	
+
 	/**
 	 * fetch single row as object
+	 *
+	 * @return object|false
 	 */
 	public function fetchObject()
 	{
 		return $this->fetch(PDO::FETCH_OBJ);
 	}
-	
-	
+
+
 	/**
 	 * fetch all rows from last query
+	 *
+	 * @return array|false
 	 */
-	public function fetchAll($fetch_mode=PDO::FETCH_ASSOC)
+	public function fetchAll(int $fetch_mode = PDO::FETCH_ASSOC)
 	{
 		if(!is_object($this->query_stack[$this->query_id]))return false;
 		return $this->query_stack[$this->query_id]->fetchAll($fetch_mode);
 	}
-	
+
 	/**
 	 * fetch all rows as objects
+	 *
+	 * @return array|false
 	 */
 	public function fetchObjectAll()
 	{
 		return $this->fetchAll(PDO::FETCH_OBJ);
 	}
-	
+
 	/**
 	 * fetch first column of first row
+	 *
+	 * @return string|false
 	 */
 	public function fetchOne()
 	{
@@ -296,81 +325,83 @@ class DBManager
 		if(!$rec)return false;
 		return $rec[0];
 	}
-	
+
 	/**
 	 * fetch first column of all rows
+	 *
+	 * @return array|false
 	 */
 	public function fetchAllOne()
 	{
 		if(!is_object($this->query_stack[$this->query_id]))return false;
 		return $this->query_stack[$this->query_id]->fetchAll(PDO::FETCH_COLUMN, 0);
 	}
-	
-	
+
+
 	/**
 	 * get affected row count from last query
+	 *
+	 * @return int|false
 	 */
 	public function rowCount()
 	{
 		if(!is_object($this->query_stack[$this->query_id]))return false;
-		
+
 		return $this->query_stack[$this->query_id]->rowCount();
 	}
-	
-	
+
+
 	/**
 	 * get last auto-increment insert id
 	 */
-	public function lastInsertId()
+	public function lastInsertId(): string
 	{
 		return $this->connection->lastInsertId();
 	}
-	
+
 	/**
 	 * get last executed SQL string
 	 */
-	public function getLastQuery()
+	public function getLastQuery(): ?string
 	{
 		return $this->last_query;
 	}
-	
+
 	/**
 	 * get last query parameters
 	 */
-	public function getLastQueryParams()
+	public function getLastQueryParams(): ?array
 	{
 		return $this->last_query_params;
 	}
-	
+
 	/**
 	 * output last query and params as HTML (debug)
 	 */
-	public function dBugLastQuery()
+	public function dBugLastQuery(): void
 	{
 		echo "<br>last query => ";
-		
+
 		echo "<pre style='border:1px solid #ccc; padding:10px'>";
 		echo htmlspecialchars($this->getLastQuery());
 		echo "</pre>";
 
 		$params = $this->getLastQueryParams();
-		if(count($params) > 0)
+		if(!empty($params))
 		{
 			echo "params => ";
 			echo "<pre style='border:1px solid #ccc; padding:10px'>";
 			echo htmlspecialchars(print_r($params, true));
 			echo "</pre>";
 		}
-		
+
 	}
-	
-	
+
+
 	/**
 	 * set active table for next operation
-	 *
-	 * @return $this
 	 */
-	public function table($table)
+	public function table(string $table): self
 	{
 		$this->table = $table;
 		return $this;
@@ -379,19 +410,19 @@ class DBManager
 	/**
 	 * reset table name after a crud operation to prevent state leak
 	 */
-	private function resetTable()
+	private function resetTable(): void
 	{
 		$this->table = '';
 	}
-	
-	
+
+
 	/**
 	 * insert a row and return the new id
 	 */
-	public function insert($row, $created_by='', $table='')
+	public function insert(array $row, string $created_by = '', string $table = ''): string
 	{
 		if(empty($table))$table = $this->table;
-		
+
 		if($this->soft_mode)
 		{
 			$keys = array_keys($row);
@@ -403,38 +434,38 @@ class DBManager
 					trigger_error("DBM Error : ".$message, E_USER_ERROR);
 				}
 			}
-			
+
 			$row['created_at'] = date('Y-m-d H:i:s');
 			$row['created_by'] = (empty($created_by)) ? $this->default_user_UID : $created_by;
 		}
-		
+
 		$columns = [];
 		$columns_str = "";
 		$values_str = "";
 		foreach($row as $key => $value)
 		{
 			$columns[] = $key;
-			
+
 			if(!empty($columns_str))$columns_str .= ", ";
 			$columns_str .= "`{$key}`";
-			
+
 			if(!empty($values_str))$values_str .= ", ";
 			$values_str .= ":{$key}";
 		}
-		
-		
+
+
 		$columns_str = trim($columns_str);
 		$stmt = "INSERT INTO `{$table}`\n";
 		$stmt .= "\t($columns_str)\n";
 		$stmt .= "VALUES\n";
 		$stmt .= "\t($values_str)";
-		
-		
+
+
 		$this->purgeQueryStack();
 		$this->query_stack[++$this->query_id] = $stmt;
 		$this->last_query = $stmt;
 		$this->last_query_params = $row;
-		
+
 		try
 		{
 			$prepared = $this->connection->prepare($stmt);
@@ -458,9 +489,14 @@ class DBManager
 
 	/**
 	 * update record(s), return affected row count
-	 * $where: numeric id, raw string, or ['clause', [':param' => value]]
+	 *
+	 * @param array $row column => value pairs
+	 * @param int|string|array $where numeric id, raw string, or ['clause', [':param' => value]]
+	 * @param int $limit -1 for no limit
+	 * @param string $updated_by override audit user
+	 * @param string $table override table name
 	 */
-	public function update($row, $where='', $limit=-1, $updated_by='', $table='')
+	public function update(array $row, $where = '', int $limit = -1, string $updated_by = '', string $table = ''): int
 	{
 		if($this->soft_mode)
 		{
@@ -473,39 +509,39 @@ class DBManager
 					trigger_error("DBM Error : ".$message, E_USER_ERROR);
 				}
 			}
-			
+
 			if(!$this->_from_query_delete)
 			{
 				$row['updated_at'] = date('Y-m-d H:i:s');
 				$row['updated_by'] = (empty($updated_by)) ? $this->default_user_UID : $updated_by;
 			}
 		}
-		
-		
+
+
 		if(empty($table))$table = $this->table;
-		
+
 		$sql = "UPDATE\n";
 		$sql .= "	`{$table}`\n";
 		$sql .= "SET\n";
-		
+
 		$_params = [];
-		
+
 		$init = false;
 		foreach($row as $key => $value)
 		{
 			if($init)$sql .= ",\n";
 			$sql .= "\t`{$key}` = :{$key}";
 			$init = true;
-			
+
 			$_params[$key] = $value;
 		}
-		
+
 		$where_dyn = [];
 		if($this->soft_mode)
 		{
 			$where_dyn[] = "`deleted` = 'NO'";
 		}
-		
+
 		if(!is_array($where))
 		{
 			if(!empty($where))
@@ -525,7 +561,7 @@ class DBManager
 		else
 		{
 			$where_dyn[] = $where[0]; # raw
-			
+
 			// $_ps = array_slice($where, 1, count($where));
 			$_ps = $where[1];
 			foreach($_ps as $p_name => $p_val)
@@ -533,34 +569,34 @@ class DBManager
 				$_params[$p_name] = $p_val;
 			}
 		}
-		
+
 		// where dynamic
 		if(count($where_dyn))
 		{
 			$sql .= "\nWHERE ";
-			
+
 			$init = false;
 			foreach($where_dyn as $wd => $val)
 			{
 				if($init) $sql .= " AND\n";
 				$sql .= "\n\t\t{$val}";
-				
+
 				$init = true;
 			}
 		}
-		
+
 		// add limit
 		if($limit != -1 && is_numeric($limit))
 		{
 			$sql .= "\nLIMIT " . (int)$limit;
 		}
-		
-		
+
+
 		$this->purgeQueryStack();
 		$this->query_stack[++$this->query_id] = $sql;
 		$this->last_query = $sql;
 		$this->last_query_params = $_params;
-		
+
 		try
 		{
 			$prepared = $this->connection->prepare($sql);
@@ -579,7 +615,7 @@ class DBManager
 		{
 			$this->handleException($e);
 		}
-		
+
 		$this->_from_query_delete = false;
 		$this->resetTable();
 
@@ -590,17 +626,17 @@ class DBManager
 	/**
 	 * insert multiple rows in chunks inside a transaction
 	 */
-	public function insertBulk($rows, $chunk_size, $created_by='', $table='')
+	public function insertBulk(array $rows, int $chunk_size, string $created_by = '', string $table = ''): void
 	{
 		if(empty($table))$table = $this->table;
 		if(!count($rows))return;
-		
+
 		$rows = array_chunk($rows, $chunk_size);
-		
+
 		// verify soft mode
 		$row = $rows[0][0];
 		$keys = array_keys($row);
-		
+
 		if($this->soft_mode)
 		{
 			foreach($this->_columns_forbidden as $key)
@@ -611,11 +647,11 @@ class DBManager
 					trigger_error("DBM Error : ".$message, E_USER_ERROR);
 				}
 			}
-			
+
 			$keys[] = 'created_by';
 			$keys[] = 'created_at';
 		}
-		
+
 		$columns = $keys;
 		$placeholders = array_fill(0, count($columns), '?');
 		try
@@ -663,11 +699,16 @@ class DBManager
 
 	/**
 	 * delete record(s) — soft delete in soft mode, hard delete otherwise
+	 *
+	 * @param int|string|array $where numeric id, raw string, or ['clause', value]
+	 * @param int $limit -1 for no limit
+	 * @param string $deleted_by override audit user
+	 * @param string $table override table name
 	 */
-	public function delete($where, $limit=-1, $deleted_by='', $table='')
+	public function delete($where, int $limit = -1, string $deleted_by = '', string $table = ''): int
 	{
 		if(empty($table))$table = $this->table;
-		
+
 		if($this->soft_mode)
 		{
 			$row = [];
@@ -675,22 +716,22 @@ class DBManager
 			$row['deleted_at'] = date('Y-m-d H:i:s');
 			$row['deleted_by'] = (empty($deleted_by)) ? $this->default_user_UID : $deleted_by;
 			$this->_from_query_delete = true;
-			
+
 			return $this->update($row, $where, $limit, '', $table);
 		}
-		
-		
+
+
 		// real mode
 		$_params = [];
 		$sql = "DELETE FROM {$table}";
-		
-		
+
+
 		if(!is_array($where))
 		{
 			if(!empty($where))
 			{
 				$sql .= " WHERE ";
-				
+
 				if(is_numeric($where))
 				{
 					$sql .= " ID = ? ";
@@ -707,14 +748,14 @@ class DBManager
 			$sql .= " WHERE \n{$where[0]} ";
 			$_params = array_slice($where, 1, count($where));
 		}
-		
+
 		// limit
 		if($limit != -1 && is_numeric($limit))
 		{
 			$sql .= " LIMIT " . (int)$limit;
 		}
-		
-		
+
+
 		$stmt = $this->prepare($sql);
 		$result = $this->execute($stmt, $_params)->rowCount();
 		$this->resetTable();
@@ -724,30 +765,33 @@ class DBManager
 
 	/**
 	 * get record(s) by id — pass array for multiple
+	 *
+	 * @param int|array $ID single id or array of ids
+	 * @return array|false
 	 */
-	public function getByID($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	public function getByID($ID, string $fields = '*', int $fetch_mode = PDO::FETCH_ASSOC, string $table = '')
 	{
 		if(empty($table))$table = $this->table;
-		
+
 		$dyn = (!$this->soft_mode) ? '' : " AND deleted = 'NO' ";
-		
+
 		if(!is_array($ID))
 		{
 			$sql = "SELECT {$fields} FROM {$table} WHERE ID = :ID {$dyn}";
 			$binds = [':ID' => $ID];
-			
+
 			$query = $this->query($sql, $binds);
 			$records = $query->fetch();
 		}
 		else
 		{
 			$in  = str_repeat('?,', count($ID) - 1) . '?';
-			
-			
+
+
 			$sql = "SELECT {$fields} FROM {$table} WHERE ID IN({$in}) {$dyn}";
 			$stmt = $this->prepare($sql);
 			$stmt = $this->execute($stmt, $ID);
-			
+
 			$records = $stmt->fetchAll($fetch_mode);
 		}
 
@@ -757,21 +801,19 @@ class DBManager
 
 	/**
 	 * @deprecated use getByID()
+	 *
+	 * @param int|array $ID single id or array of ids
+	 * @return array|false
 	 */
-	public function get($ID, $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	public function get($ID, string $fields = '*', int $fetch_mode = PDO::FETCH_ASSOC, string $table = '')
 	{
 		return $this->getByID($ID, $fields, $fetch_mode, $table);
 	}
 
 	/**
 	 * count records in table
-	 *
-	 * @param string $where
-	 * @param array $params
-	 * @param string $table
-	 * @return int
 	 */
-	public function count($where='', $params=[], $table='')
+	public function count(string $where = '', array $params = [], string $table = ''): int
 	{
 		if(empty($table))$table = $this->table;
 
@@ -801,14 +843,9 @@ class DBManager
 	/**
 	 * find one record by where clause
 	 *
-	 * @param string $where
-	 * @param array $params
-	 * @param string $fields
-	 * @param int $fetch_mode
-	 * @param string $table
 	 * @return array|false
 	 */
-	public function findOne($where='', $params=[], $fields='*', $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	public function findOne(string $where = '', array $params = [], string $fields = '*', int $fetch_mode = PDO::FETCH_ASSOC, string $table = '')
 	{
 		if(empty($table))$table = $this->table;
 
@@ -840,16 +877,10 @@ class DBManager
 	/**
 	 * find all records by where clause
 	 *
-	 * @param string $where
-	 * @param array $params
-	 * @param string $fields
-	 * @param string $order_by
-	 * @param int $limit (0 = no limit)
-	 * @param int $fetch_mode
-	 * @param string $table
+	 * @param int $limit 0 = no limit
 	 * @return array|false
 	 */
-	public function findAll($where='', $params=[], $fields='*', $order_by='', $limit=0, $fetch_mode=PDO::FETCH_ASSOC, $table='')
+	public function findAll(string $where = '', array $params = [], string $fields = '*', string $order_by = '', int $limit = 0, int $fetch_mode = PDO::FETCH_ASSOC, string $table = '')
 	{
 		if(empty($table))$table = $this->table;
 
@@ -889,13 +920,10 @@ class DBManager
 	/**
 	 * insert or update on duplicate key
 	 *
-	 * @param array $row
+	 * @param array $row column => value pairs
 	 * @param array $update_columns columns to update on duplicate (empty = all)
-	 * @param string $created_by
-	 * @param string $table
-	 * @return int last insert id
 	 */
-	public function upsert($row, $update_columns=[], $created_by='', $table='')
+	public function upsert(array $row, array $update_columns = [], string $created_by = '', string $table = ''): string
 	{
 		if(empty($table))$table = $this->table;
 
@@ -960,84 +988,84 @@ class DBManager
 	/**
 	 * add soft mode columns to table if missing
 	 */
-	public function addSoftModeColumns($table='')
+	public function addSoftModeColumns(string $table = ''): void
 	{
 		if(empty($table))$table = $this->table;
-		
+
 		$sql = "SHOW FIELDS FROM `{$table}`";
 		$fields = $this->query($sql)->fetchAll();
-		
+
 		$cols = [];
 		foreach($fields as $field)
 			$cols[] = $field['Field'];
-		
+
 		$sqls = [];
-		
+
 		// deleted
 		if(!in_array('deleted', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `deleted` ENUM('NO', 'YES') NOT NULL DEFAULT 'NO', ADD INDEX `deleted` (`deleted` ASC)";
-		
+
 		// created_at
 		if(!in_array('created_at', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `created_at` DATETIME NULL";
-		
+
 		// created_by
 		if(!in_array('created_by', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `created_by` VARCHAR(255) NULL";
-		
+
 		// updated_at
 		if(!in_array('updated_at', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `updated_at` DATETIME NULL";
-		
+
 		// updated_by
 		if(!in_array('updated_by', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `updated_by` VARCHAR(255) NULL";
-		
+
 		// deleted_at
 		if(!in_array('deleted_at', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `deleted_at` DATETIME NULL";
-		
+
 		// deleted_by
 		if(!in_array('deleted_by', $cols))
 			$sqls[] = "ALTER TABLE `{$table}` ADD COLUMN `deleted_by` VARCHAR(255) NULL";
-		
-		
+
+
 		foreach($sqls as $sql)
 			$this->query($sql);
 	}
-	
+
 	/**
 	 * set SELECT clause for query builder
 	 */
-	public function select($fields="*")
+	public function select(string $fields = "*"): self
 	{
 		$this->dbQL = [];
 		$this->dbQL['SELECT'] = $fields;
 		return $this;
 	}
-	
+
 	/**
 	 * set FROM clause for query builder
 	 */
-	public function from($tables)
+	public function from(string $tables): self
 	{
 		$this->dbQL['FROM'] = $tables;
 		return $this;
 	}
-	
+
 	/**
 	 * add WHERE condition (multiple calls are joined with AND)
 	 */
-	public function where($where)
+	public function where(string $where): self
 	{
 		$this->dbQL['WHERE'][] = [$where];
 		return $this;
 	}
-	
+
 	/**
 	 * set GROUP BY clause
 	 */
-	public function groupBy($groupBy)
+	public function groupBy(string $groupBy): self
 	{
 		$this->dbQL['GROUP BY'] = $groupBy;
 		return $this;
@@ -1046,47 +1074,49 @@ class DBManager
 	/**
 	 * set HAVING clause
 	 */
-	public function having($having)
+	public function having(string $having): self
 	{
 		$this->dbQL['HAVING'] = $having;
 		return $this;
 	}
-	
+
 	/**
 	 * set ORDER BY clause
 	 */
-	public function orderBy($orderBy)
+	public function orderBy(string $orderBy): self
 	{
 		$this->dbQL['ORDER BY'] = $orderBy;
 		return $this;
 	}
-	
+
 	/**
 	 * set LIMIT clause
+	 *
+	 * @param int|string $limit single int or "offset, limit" string
 	 */
-	public function limit($limit)
+	public function limit($limit): self
 	{
 		$this->dbQL['LIMIT'] = $limit;
 		return $this;
 	}
-	
+
 	/**
 	 * execute built query from query builder
 	 */
-	public function executeSQL($params=[])
+	public function executeSQL(array $params = []): self
 	{
 		$sql = $this->getSQL();
 		return $this->query($sql, $params);
 	}
-	
+
 	/**
 	 * build SQL string from query builder and reset state
 	 */
-	public function getSQL()
+	public function getSQL(): string
 	{
 		if(!isset($this->dbQL['SELECT']))
 			$this->dbQL['SELECT'] = '*';
-		
+
 		if(!isset($this->dbQL['FROM']))
 		{
 			if(empty($this->table))
@@ -1094,24 +1124,24 @@ class DBManager
 			else
 				$this->dbQL['FROM'] = $this->table;
 		}
-		
+
 		if($this->soft_mode)
 			$this->where("deleted = 'NO'");
-		
+
 		$sql = "SELECT\n";
 		$sql .= "\t\t{$this->dbQL['SELECT']}\n";
 		$sql .= "FROM\n";
 		$sql .= "\t\t{$this->dbQL['FROM']}\n";
-		
+
 		if(isset($this->dbQL['WHERE']) && count($this->dbQL['WHERE']))
 		{
 			$sql .= "WHERE\n";
-			
+
 			$init = false;
 			foreach($this->dbQL['WHERE'] as $where)
 			{
 				if($init)$sql .= " AND\n";
-				
+
 				if(is_array($where))
 				{
 					if(is_numeric($where[0])) $where[0] = "ID = {$where[0]}";
@@ -1122,11 +1152,11 @@ class DBManager
 					if(is_numeric($where)) $where = "ID = {$where}";
 					$sql .= "\t\t{$where}";
 				}
-				
+
 				$init = true;
 			}
 		}
-		
+
 		// group by
 		if(isset($this->dbQL['GROUP BY']))
 		{
@@ -1147,29 +1177,29 @@ class DBManager
 			$sql .= "\nORDER BY\n";
 			$sql .= "\t\t{$this->dbQL['ORDER BY']}\n";
 		}
-		
+
 		// limit
 		if(isset($this->dbQL['LIMIT']))
 		{
 			$sql .= "\nLIMIT\n";
 			$sql .= "\t\t{$this->dbQL['LIMIT']}\n";
 		}
-		
+
 		$this->dbQL = [];
 		return $sql;
 	}
-	
-	
+
+
 	/**
 	 * paginate a query — returns array with total, per_page, data, etc.
 	 */
-	public function paginate($sql, $params=[], $current_page=1, $limit=20, $sql_cal_found_mode=false)
+	public function paginate(string $sql, array $params = [], int $current_page = 1, int $limit = 20, bool $sql_cal_found_mode = false): array
 	{
 		$current_page = (int)$current_page;
 		if($current_page <= 0)$current_page = 1;
 		$offset = ($current_page-1) * $limit;
 		if($offset < 0)$offset = 0;
-		
+
 		$sql = trim($sql);
 		if(!$sql_cal_found_mode)
 		{
@@ -1209,7 +1239,7 @@ class DBManager
 			$total_page = (int)ceil($total_found / $limit);
 			if($current_page >= $total_page)$current_page = $total_page;
 		}
-		
+
 		$_response = [];
 		$_response['total'] = $total_found;
 		$_response['per_page'] = $limit;
@@ -1217,42 +1247,42 @@ class DBManager
 		$_response['current_page'] = $current_page;
 		$_response['from'] = (($current_page-1) * $limit) + 1;
 		$_response['to'] = ($_response['from'] + $limit) - 1;
-		
+
 		if($_response['to'] > $total_found)
 			$_response['to'] = $total_found;
-		
+
 		$_response['page_start'] = 1;
 		$_response['page_end'] = 10;
-		
+
 		if($_response['page_end'] > $total_page)
 			$_response['page_end'] = $total_page;
-		
+
 		$_response['data'] = $result;
-		
+
 		if($total_page > 10)
 		{
 			if($current_page >= 6)
 			{
 				$_response['page_start'] = $current_page - 5;
 				$_response['page_end'] = $current_page + 4;
-				
+
 				if($_response['page_end'] > $total_page)
 				{
 					$diff =  $_response['page_end'] - $total_page;
-					
+
 					$_response['page_end'] = $total_page;
 					$_response['page_start'] -= $diff;
 				}
 			}
 		}
-		
+
 		return $_response;
 	}
-	
+
 	/**
 	 * check if inside a transaction
 	 */
-	public function inTransaction()
+	public function inTransaction(): bool
 	{
 		return $this->transaction_level > 0;
 	}
@@ -1260,7 +1290,7 @@ class DBManager
 	/**
 	 * get transaction nesting depth (0 = none)
 	 */
-	public function getTransactionLevel()
+	public function getTransactionLevel(): int
 	{
 		return $this->transaction_level;
 	}
@@ -1268,7 +1298,7 @@ class DBManager
 	/**
 	 * begin transaction (nested calls create savepoints)
 	 */
-	public function beginTransaction()
+	public function beginTransaction(): void
 	{
 		if($this->transaction_level == 0)
 		{
@@ -1285,7 +1315,7 @@ class DBManager
 	/**
 	 * commit transaction (releases savepoint if nested)
 	 */
-	public function commit()
+	public function commit(): void
 	{
 		if($this->transaction_level <= 0) return;
 
@@ -1312,7 +1342,7 @@ class DBManager
 	/**
 	 * rollback transaction (rolls back to savepoint if nested)
 	 */
-	public function rollBack()
+	public function rollBack(): void
 	{
 		if($this->transaction_level <= 0) return;
 
@@ -1330,6 +1360,8 @@ class DBManager
 
 	/**
 	 * run callback in a transaction — auto commit/rollback, throws on error
+	 *
+	 * @return mixed callback return value
 	 */
 	public function transaction(callable $callback)
 	{
@@ -1352,7 +1384,7 @@ class DBManager
 	 * run callback in a transaction — returns true/false, no exception
 	 * pass $error by reference to get the exception on failure
 	 */
-	public function safeTransaction(callable $callback, &$error=null)
+	public function safeTransaction(callable $callback, ?\Throwable &$error = null): bool
 	{
 		try
 		{
@@ -1365,6 +1397,5 @@ class DBManager
 			return false;
 		}
 	}
-	
-}
 
+}
